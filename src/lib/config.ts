@@ -7,7 +7,6 @@ import * as path from 'path'
 
 // TODO: could probably add some constraints to these
 const ConfigBlockSchema = z.object({
-  //config: z.optional(z.record(z.string(), z.string().or(z.number()).or(z.boolean()))).default({}),
   config: z.record(z.string(), z.string().or(z.number()).or(z.boolean())).default({}),
 })
 const ExternalConfigSchema = z.object({

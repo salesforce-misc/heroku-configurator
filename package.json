@@ -30,7 +30,7 @@
     "zod": "^3.19.1"
   },
   "devDependencies": {
-    "@oclif/test": "^2.2.6",
+    "@oclif/test": "^2.2.10",
     "@types/chai": "^4",
     "@types/mocha": "^9.0.0",
     "@types/node": "^16.11.68",

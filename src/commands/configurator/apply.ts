@@ -161,8 +161,14 @@ export default class Apply extends Command {
             }
 
             // trim down in the event that an app is targeted
-            currentConfig = {key: currentConfig[flags.app]}
-            expectedConfig = {key: expectedConfig[flags.app]}
+            const trimmedCurrentConfig: Record<string, Heroku.ConfigVars> = {};
+            trimmedCurrentConfig[flags.app] = currentConfig[flags.app];
+
+            const trimmedExpectedConfig: Record<string, Heroku.ConfigVars> = {};
+            trimmedExpectedConfig[flags.app] = expectedConfig[flags.app];
+
+            currentConfig = trimmedCurrentConfig;
+            expectedConfig = trimmedExpectedConfig;
           }
 
           const diffs = <Diff>detailedDiff(currentConfig, expectedConfig)

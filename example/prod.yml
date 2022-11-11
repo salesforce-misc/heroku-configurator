@@ -1,0 +1,29 @@
+name: prod
+include:
+  - type: file
+    params:
+      path: includes/django.yml
+  - type: file
+    params:
+      path: includes/chatterbot.yml
+  - type: file
+    params:
+      path: includes/canary.yml
+apps:
+  configurator-prod-canary:
+    include:
+      - django.common
+      - chatterbot.common
+      - canary.disabled
+  configurator-prod-us:
+    include:
+      - django.common
+      - chatterbot.common
+      - canary.enabled
+  configurator-prod-eu:
+    include:
+      - django.common
+      - chatterbot.common
+      - canary.disabled
+    config:
+      TIME_ZONE: Europe/Berlin

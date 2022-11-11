@@ -1,0 +1,9 @@
+name: django
+common:
+  config:
+    DEBUG: false
+    TEMPLATE_DEBUG: false
+    USE_ETAGS: true
+    DEFAULT_FROM_EMAIL: my.email@example.com
+    EMAIL_SUBJECT_PREFIX: '[MY.SERVICE]'
+    CSRF_COOKIE_SECURE: true

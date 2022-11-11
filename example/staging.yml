@@ -1,0 +1,24 @@
+name: staging
+include:
+  - type: file
+    params:
+      path: includes/django.yml
+  - type: file
+    params:
+      path: includes/chatterbot.yml
+  - type: file
+    params:
+      path: includes/canary.yml
+locals:
+  staging_overrides:
+    config:
+      DEBUG: true
+apps:
+  configurator-staging:
+    include:
+      - canary.disabled
+      - chatterbot.common
+      - django.common
+      - staging_overrides
+    config:
+      APP_NAME: configurator-staging

@@ -1,0 +1,4 @@
+name: chatterbot
+common:
+  config:
+    NAME: 'My chatter bot'

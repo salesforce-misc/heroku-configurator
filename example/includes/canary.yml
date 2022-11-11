@@ -1,0 +1,7 @@
+name: canary
+enabled:
+  config:
+    CANARY_TRAFFIC: 10
+disabled:
+  config:
+    CANARY_TRAFFIC: 0

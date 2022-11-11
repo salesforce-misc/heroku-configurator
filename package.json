@@ -46,6 +46,7 @@
     "shx": "^0.3.3",
     "ts-node": "^10.9.1",
     "tslib": "^2.3.1",
+    "tsup": "^6.4.0",
     "typescript": "^4.8.4"
   },
   "oclif": {
@@ -67,7 +68,7 @@
     }
   },
   "scripts": {
-    "build": "shx rm -rf dist && tsc -b",
+    "build": "shx rm -rf dist && tsup",
     "lint": "eslint . --ext .ts --config .eslintrc",
     "postpack": "shx rm -f oclif.manifest.json",
     "posttest": "yarn lint",

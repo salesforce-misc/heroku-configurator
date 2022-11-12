@@ -14,7 +14,7 @@ locals:
     config:
       DEBUG: true
 apps:
-  configurator-staging:
+  configurator-stagings:
     include:
       - canary.disabled
       - chatterbot.common

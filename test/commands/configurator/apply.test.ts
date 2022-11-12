@@ -106,6 +106,6 @@ describe('configurator:apply', () => {
     .reply(404)
   })
   .command(['configurator:apply', '-f', 'doesnt_matter.yml'])
-  .catch(error => expect(error.message).to.contain('HTTP Error 404'))
+  .catch(error => expect(error.message).to.contain('App not_found doesn\'t exist'))
   .it('should error out when configured project doesn\'t exist in heroku')
 })

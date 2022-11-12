@@ -1,9 +1,11 @@
 import {parse} from 'yaml'
 import {readFile} from 'node:fs'
+import * as fs from 'fs'
 import {z} from 'zod'
 import * as Heroku from '@heroku-cli/schema'
 import {APIClient} from '@heroku-cli/command'
 import * as path from 'path'
+import { execPath } from 'node:process'
 
 // TODO: could probably add some constraints to these
 const ConfigBlockSchema = z.object({
@@ -104,14 +106,15 @@ function applyLocals(configObj: RootConfigType): void {
 }
 
 export async function fetchConfig(app: string, client: APIClient): Promise<Heroku.ConfigVars> {
-  return new Promise<Heroku.ConfigVars>((resolve, reject) => {
-    client.get(`/apps/${app}/config-vars`)
-    .then(resp => {
-      resolve(<Promise<Heroku.ConfigVars>>resp.body)
-    }).catch(error => {
-      reject(error)
-    })
-  })
+  try {
+    const resp = await client.get(`/apps/${app}/config-vars`);
+    if (resp.statusCode == 404) {
+      return Promise.reject(new Error('App doesnt exist'))
+    }
+    return Promise.resolve(<Heroku.ConfigVars>resp.body);
+  } catch(err) {
+    return Promise.reject(new Error(`App ${app} doesn't exist in Heroku`));
+  }
 }
 
 export async function fetchConfigs(apps: string[], client: APIClient): Promise<Record<string, Heroku.ConfigVars>> {
@@ -144,40 +147,21 @@ export async function fetchConfigs(apps: string[], client: APIClient): Promise<R
 }
 
 export async function load(filePath: string, expectedSchema: z.ZodType = RootConfigSchema): Promise<RootConfigType | ExternalConfigType> {
-  return new Promise<RootConfigType | ExternalConfigType>((resolve, reject) => {
-    readFile(filePath, 'utf8', (err, data) => {
-      if (err) {
-        reject(err)
-        return
-      }
+  const data = await fs.promises.readFile(filePath, 'utf8')
+  let configObj: RootConfigType
+  try {configObj = parse(data)}
+  catch (error) {return Promise.reject(error)}
 
-      let configObj: RootConfigType
-      try {
-        configObj = parse(data)
-      } catch (error) {
-        reject(error)
-        return
-      }
+  try {configObj = expectedSchema.parse(configObj)}
+  catch (error) {return Promise.reject(new Error(`Invalid configuration: ${filePath}\n${(<Error>error).message}`))}
 
-      try {
-        configObj = expectedSchema.parse(configObj)
-      } catch (error) {
-        reject(new Error(`Invalid configuration: ${filePath}\n${(<Error>error).message}`))
-        return
-      }
+  const configDir = path.dirname(path.resolve(filePath));
+  // order is important. locals should take higher priority than externally loaded config.
+  try { applyLocals(configObj) }
+  catch(err) { return Promise.reject(err) }
 
-      const configDir = path.dirname(path.resolve(filePath));
-      // order is important. locals should take higher priority than externally loaded config.
-      try {
-        applyLocals(configObj)
-      } catch(err) {
-        reject(err); return;
-      }
-      applyExternalIncludes(configObj, configDir)
-      .then(() => resolve(configObj))
-      .catch(error => {
-        reject(error)
-      })
-    })
-  })
+  if (expectedSchema === RootConfigSchema) {
+    await applyExternalIncludes(configObj, configDir);
+  }
+  return Promise.resolve(configObj);
 }

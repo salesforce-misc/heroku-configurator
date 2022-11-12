@@ -1,7 +1,7 @@
 import {APIClient, Command, flags} from '@heroku-cli/command'
 import * as Heroku from '@heroku-cli/schema'
 import {CliUx} from '@oclif/core'
-import {detailedDiff, diff} from 'deep-object-diff'
+import {detailedDiff} from 'deep-object-diff'
 import {load, RootConfigType, fetchConfigs} from '../../lib/config'
 import {table} from 'table'
 

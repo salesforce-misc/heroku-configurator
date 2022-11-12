@@ -1,9 +1,11 @@
 import {APIClient, Command, flags} from '@heroku-cli/command'
 import * as Heroku from '@heroku-cli/schema'
 import {CliUx} from '@oclif/core'
-import {detailedDiff} from 'deep-object-diff'
+import {detailedDiff, diff} from 'deep-object-diff'
 import {load, RootConfigType, fetchConfigs} from '../../lib/config'
 import {table} from 'table'
+
+const ux = CliUx.ux;
 
 type NormalizedConfigType = {
   [key: string]: Record<string, string>
@@ -38,7 +40,6 @@ function formatDiffs(current: Record<string, Heroku.ConfigVars>, expected: Recor
   const formattedDiffs: DiffByApp = []
   for (const app in expected) {
     if (app in diff.updated || app in diff.added) {
-    //if (diff.updated.hasOwnProperty(app) || diff.added.hasOwnProperty(app)) {
       const updated: string[][] = []
       for (const key in diff.updated[app]) {
         updated.push([key, diff.updated[app][key], current[app][key]])
@@ -134,6 +135,17 @@ async function apply(diffs: Diff, client: APIClient): Promise<void> {
   }
 }
 
+function trimConfigs(currentConfig: NormalizedConfigType, expectedConfig: NormalizedConfigType, app: string): [NormalizedConfigType, NormalizedConfigType] {
+  // trim down in the event that an app is targeted
+  const trimmedCurrentConfig: NormalizedConfigType = {};
+  trimmedCurrentConfig[app] = currentConfig[app];
+
+  const trimmedExpectedConfig: NormalizedConfigType = {};
+  trimmedExpectedConfig[app] = expectedConfig[app];
+
+  return [trimmedCurrentConfig, trimmedExpectedConfig];
+}
+
 export default class Apply extends Command {
   static description = 'Applies the configuration to the defined applications.'
   static flags = {
@@ -145,82 +157,27 @@ export default class Apply extends Command {
   async run(): Promise<void> {
     const {flags} = this.parse(Apply)
 
-    return new Promise<void>((resolve, reject) => {
-      (<Promise<RootConfigType>>load(flags.path))
-      .then(loadedConfig => {
-        let expectedConfig = normalizeExpectedConfig(loadedConfig)
+    const loadedConfig: RootConfigType = <RootConfigType>await load(flags.path);
+    let expectedConfig = normalizeExpectedConfig(loadedConfig);
+    let currentConfig = await fetchConfigs(Object.keys(loadedConfig.apps), this.heroku)
 
-        fetchConfigs(Object.keys(loadedConfig.apps), this.heroku)
-        .then(currentConfig => {
-          if (flags.app) {
-            // this could potentially be done better above to remove the need for N requests when app is
-            // specified, but i'm too tired to think about it in more detail atm
-            if (!(flags.app in currentConfig)) {
-              reject(new Error(`Unrecognized app ${flags.app}`))
-              return
-            }
+    if (flags.app) {
+      if (!(flags.app in currentConfig)) return Promise.reject(new Error(`Unrecognized app ${flags.app}`));
+      [currentConfig, expectedConfig] = trimConfigs(currentConfig, expectedConfig, flags.app);
+    }
 
-            // trim down in the event that an app is targeted
-            const trimmedCurrentConfig: Record<string, Heroku.ConfigVars> = {};
-            trimmedCurrentConfig[flags.app] = currentConfig[flags.app];
+    const diffs = <Diff>detailedDiff(currentConfig, expectedConfig);
+    if (Object.keys(diffs.updated).length === 0 && Object.keys(diffs.added).length === 0) {
+      ux.log('No diffs found, exiting.')
+      return Promise.resolve();
+    }
 
-            const trimmedExpectedConfig: Record<string, Heroku.ConfigVars> = {};
-            trimmedExpectedConfig[flags.app] = expectedConfig[flags.app];
+    const formattedDiffs = formatDiffs(currentConfig, expectedConfig, diffs)
+    outputDiffs(formattedDiffs);
+    if (flags.dryrun) return Promise.resolve();
 
-            currentConfig = trimmedCurrentConfig;
-            expectedConfig = trimmedExpectedConfig;
-          }
-
-          const diffs = <Diff>detailedDiff(currentConfig, expectedConfig)
-          if (Object.keys(diffs.updated).length === 0 && Object.keys(diffs.added).length === 0) {
-            CliUx.ux.log('No diffs found, exiting.')
-            resolve()
-            return
-          }
-
-          const formattedDiffs = formatDiffs(currentConfig, expectedConfig, diffs)
-          if (formattedDiffs) {
-            outputDiffs(formattedDiffs)
-            if (flags.dryrun) {
-              resolve();
-              return;
-            }
-            shouldApplyDiffs()
-            .then(shouldApply => {
-              if (shouldApply) {
-                apply(diffs, this.heroku)
-                .then(() => {
-                  resolve()
-                  return
-                })
-                .catch(error => {
-                  reject(error)
-                  return
-                })
-              } else {
-                console.log('Exiting.')
-                resolve()
-                return
-              }
-            })
-            .catch(error => {
-              reject(error)
-              return
-            })
-          } else {
-            this.log('No diffs found.')
-            resolve()
-            return
-          }
-        }).catch(error => {
-          reject(error)
-          return
-        })
-      })
-      .catch(error => {
-        reject(error)
-        return
-      })
-    })
+    if (await shouldApplyDiffs()) {
+      await apply(diffs, this.heroku);
+    } 
   }
 }

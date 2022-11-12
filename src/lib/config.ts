@@ -1,11 +1,9 @@
 import {parse} from 'yaml'
-import {readFile} from 'node:fs'
 import * as fs from 'fs'
 import {z} from 'zod'
 import * as Heroku from '@heroku-cli/schema'
 import {APIClient} from '@heroku-cli/command'
 import * as path from 'path'
-import { execPath } from 'node:process'
 
 // TODO: could probably add some constraints to these
 const ConfigBlockSchema = z.object({
@@ -41,48 +39,34 @@ export type RootConfigType = z.infer<typeof RootConfigSchema>;
 export type ExternalConfigType = z.infer<typeof ExternalConfigSchema>;
 
 async function applyExternalIncludes(configObj: RootConfigType, configDir: string) : Promise<void> {
-  return new Promise<void>((resolve, reject) => {
-    if (configObj.include) {
-      const promises: Promise<void>[] = []
+  if (!configObj.include) return Promise.resolve();
 
-      // run through each of the external config files and copy the included blocks into each of the app's configs.
-      // this could be a whole lot smarter and have a bunch more error checking but at this point i've had it
-      // with hacking my way around the type system so i don't care enough to. i'll probably revisit it at some point once
-      // i've learned more about the type system. just concentrating on the happy path for now.
-      for (const inc of configObj.include) {
-        const promise = (<Promise<ExternalConfigType>>load(path.join(configDir, inc.params.path), ExternalConfigSchema))
-        .then(externalConfig => {
-          for (const appKey in configObj.apps) {
-            const appConfig = configObj.apps[appKey as keyof typeof configObj.apps]
-            if (!appConfig.include) continue
+  const promises: Promise<ExternalConfigType>[] = [];
+  configObj.include.map(include => {
+    promises.push(<Promise<ExternalConfigType>>load(path.join(configDir, include.params.path), ExternalConfigSchema))
+  });
 
-            for (const appInclude of appConfig.include) {
-              const [name, block] = appInclude.split('.')
-              if (name == externalConfig.name && externalConfig[block as keyof typeof externalConfig]) {
-                for (const configKey in externalConfig[block as keyof typeof externalConfig].config) {
-                  if (!(configKey in appConfig.config)) {
-                    appConfig.config[configKey] = externalConfig[block].config[configKey]
-                  }
-                }
-              }
+  await Promise.all(promises)
+  .then(externalConfigs => {
+    externalConfigs.map(externalConfig => {
+      for (const app in configObj.apps) {
+        const currentApp = configObj.apps[app];
+
+        if (!currentApp.include) continue;
+        for (const appInclude of currentApp.include) {
+          const [name, block] = appInclude.split('.')
+          if (name !== externalConfig.name) continue;
+
+          if (block in externalConfig) {
+            for (const configKey in externalConfig[block as keyof typeof externalConfig].config) {
+              if (!(configKey in currentApp.config)) currentApp.config[configKey] = externalConfig[block].config[configKey]
             }
           }
-        }).catch(error => {
-          reject(error)
-        })
-        promises.push(promise)
+        }
       }
-
-      Promise.all(promises)
-      .then(() => {
-        resolve()
-      }).catch(error => {
-        reject(error)
-      })
-    } else {
-      resolve()
-    }
+    })
   })
+  Promise.resolve();
 }
 
 function applyLocals(configObj: RootConfigType): void {
@@ -95,7 +79,6 @@ function applyLocals(configObj: RootConfigType): void {
           for (const configKey in configObj.locals[include].config) {
             // don't stomp existing config
             if (!(configKey in currentApp.config)) {
-            //if (!(configKey in currentApp.config)) {
               currentApp.config[configKey] = configObj.locals[include].config[configKey]
             }
           }
@@ -130,9 +113,10 @@ export async function fetchConfigs(apps: string[], client: APIClient): Promise<R
   return Promise.resolve(appConfigs);
 }
 
+// TODO: would probably be best to break this up between loading root and external configs
 export async function load(filePath: string, expectedSchema: z.ZodType = RootConfigSchema): Promise<RootConfigType | ExternalConfigType> {
   const data = await fs.promises.readFile(filePath, 'utf8')
-  let configObj: RootConfigType
+  let configObj: RootConfigType | ExternalConfigType;
   try {configObj = parse(data)}
   catch (error) {return Promise.reject(error)}
 
@@ -140,12 +124,12 @@ export async function load(filePath: string, expectedSchema: z.ZodType = RootCon
   catch (error) {return Promise.reject(new Error(`Invalid configuration: ${filePath}\n${(<Error>error).message}`))}
 
   const configDir = path.dirname(path.resolve(filePath));
-  // order is important. locals should take higher priority than externally loaded config.
-  try { applyLocals(configObj) }
-  catch(err) { return Promise.reject(err) }
 
   if (expectedSchema === RootConfigSchema) {
-    await applyExternalIncludes(configObj, configDir);
+    // order is important. locals should take higher priority than externally loaded config.
+    try { applyLocals(<RootConfigType>configObj) }
+    catch(err) { return Promise.reject(err) }
+    await applyExternalIncludes(<RootConfigType>configObj, configDir);
   }
   return Promise.resolve(configObj);
 }

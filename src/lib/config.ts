@@ -105,45 +105,29 @@ function applyLocals(configObj: RootConfigType): void {
   }
 }
 
-export async function fetchConfig(app: string, client: APIClient): Promise<Heroku.ConfigVars> {
+export async function fetchConfig(app: string, client: APIClient): Promise<{app: string, config: Heroku.ConfigVars}> {
   try {
     const resp = await client.get(`/apps/${app}/config-vars`);
     if (resp.statusCode == 404) {
       return Promise.reject(new Error('App doesnt exist'))
     }
-    return Promise.resolve(<Heroku.ConfigVars>resp.body);
+    return Promise.resolve({app: app, config: <Heroku.ConfigVars>resp.body});
   } catch(err) {
     return Promise.reject(new Error(`App ${app} doesn't exist in Heroku`));
   }
 }
 
 export async function fetchConfigs(apps: string[], client: APIClient): Promise<Record<string, Heroku.ConfigVars>> {
-  return new Promise<Record<string, Heroku.ConfigVars>>((resolve, reject) => {
-    const appConfigs: Record<string, Heroku.ConfigVars> = {}
-    const promises: Promise<void>[] = []
+  const promises: Promise<{app: string, config: Heroku.ConfigVars}>[] = []
+  const appConfigs: Record<string, Heroku.ConfigVars> = {}
 
-    for (const app of apps) {
-      const promise = new Promise<void>((res, rej) => {
-        fetchConfig(app, client)
-        .then(config => {
-          appConfigs[app] = config
-          res()
-        }).catch(error => {
-          rej(error)
-        })
-      })
+  apps.map(app => promises.push(fetchConfig(app, client)));
 
-      promises.push(promise)
-    }
-
-    Promise.all(promises)
-    .then(() => {
-      resolve(appConfigs)
-    }).catch(error => {
-      reject(error)
-      return
-    })
+  await Promise.all(promises)
+  .then(values => {
+    values.map((config => {appConfigs[config.app] = config.config}));
   })
+  return Promise.resolve(appConfigs);
 }
 
 export async function load(filePath: string, expectedSchema: z.ZodType = RootConfigSchema): Promise<RootConfigType | ExternalConfigType> {

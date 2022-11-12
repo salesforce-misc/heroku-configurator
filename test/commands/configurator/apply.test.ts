@@ -34,20 +34,13 @@ describe('configurator:apply', () => {
     expect(stdout).to.contain('Config successfully applied')
   })
 
+  async function mockLoad(config: Record<string, unknown>): Promise<config.RootConfigType | config.ExternalConfigType> {
+    return Promise.resolve(<config.RootConfigType | config.ExternalConfigType>config);
+  }
+
   test
   .stdout()
-  .stub(config, 'load', async (): Promise<config.RootConfigType | config.ExternalConfigType> => {
-    return Promise.resolve({
-      name: 'test_app',
-      apps: {
-        test: {
-          config: {
-            FOO: 'foo',
-          },
-        },
-      },
-    })
-  })
+  .stub(config, 'load', () => mockLoad({name: 'test_app', apps: {test: {config: {FOO: 'foo'}}}}))
   .nock('https://api.heroku.com', api => {
     api
     .get(/apps\/.*\/config-vars/)
@@ -60,23 +53,14 @@ describe('configurator:apply', () => {
 
   test
   .stdout()
-  .stub(config, 'load', async (): Promise<config.RootConfigType | config.ExternalConfigType> => {
-    return Promise.resolve({
+  .stub(config, 'load', () => mockLoad({
       name: 'test_config',
       apps: {
-        test_a: {
-          config: {
-            FOO: 'foo',
-          },
-        },
-        test_b: {
-          config: {
-            FOO: 'bar',
-          },
-        },
+        test_a: {config: {FOO: 'foo'}},
+        test_b: {config: {FOO: 'bar'}},
       },
     })
-  })
+  )
   .nock('https://api.heroku.com', api => {
     api
     .get(/apps\/.*\/config-vars/)
@@ -90,16 +74,7 @@ describe('configurator:apply', () => {
 
   test
   .stdout()
-  .stub(config, 'load', async (): Promise<config.RootConfigType | config.ExternalConfigType> => {
-    return Promise.resolve({
-      name: 'test_notfound',
-      apps: {
-        not_found: {
-          config: {FOO: 'bar'},
-        },
-      },
-    })
-  })
+  .stub(config, 'load', () => mockLoad({name: 'test_notfound', apps: {not_found: {config: {FOO: 'bar'}}}}))
   .nock('https://api.heroku.com', api => {
     api
     .get(/apps\/.*\/config-vars/)
@@ -108,4 +83,7 @@ describe('configurator:apply', () => {
   .command(['configurator:apply', '-f', 'doesnt_matter.yml'])
   .catch(error => expect(error.message).to.contain('App not_found doesn\'t exist'))
   .it('should error out when configured project doesn\'t exist in heroku')
+
+  // TODO: test for patch borking
+  // TODO: test for 500 when reading configs
 })

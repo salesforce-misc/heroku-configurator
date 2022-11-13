@@ -4,6 +4,7 @@ import {z} from 'zod'
 import * as Heroku from '@heroku-cli/schema'
 import {APIClient} from '@heroku-cli/command'
 import * as path from 'path'
+import * as errors from '../lib/errors'
 
 // TODO: could probably add some constraints to these
 const ConfigBlockSchema = z.object({
@@ -91,12 +92,9 @@ function applyLocals(configObj: RootConfigType): void {
 export async function fetchConfig(app: string, client: APIClient): Promise<{app: string, config: Heroku.ConfigVars}> {
   try {
     const resp = await client.get(`/apps/${app}/config-vars`);
-    if (resp.statusCode == 404) {
-      return Promise.reject(new Error('App doesnt exist'))
-    }
     return Promise.resolve({app: app, config: <Heroku.ConfigVars>resp.body});
   } catch(err) {
-    return Promise.reject(new Error(`App ${app} doesn't exist in Heroku`));
+    throw new errors.AppNotFoundError(app);
   }
 }
 
@@ -115,13 +113,16 @@ export async function fetchConfigs(apps: string[], client: APIClient): Promise<R
 
 // TODO: would probably be best to break this up between loading root and external configs
 export async function load(filePath: string, expectedSchema: z.ZodType = RootConfigSchema): Promise<RootConfigType | ExternalConfigType> {
-  const data = await fs.promises.readFile(filePath, 'utf8')
+  let data = '';
+  try {data = await fs.promises.readFile(filePath, 'utf8')}
+  catch (err) {throw new errors.FileDoesNotExistError(filePath)}
+
   let configObj: RootConfigType | ExternalConfigType;
   try {configObj = parse(data)}
-  catch (error) {return Promise.reject(error)}
+  catch (err) { throw new errors.InvalidConfigurationError(filePath); }
 
   try {configObj = expectedSchema.parse(configObj)}
-  catch (error) {return Promise.reject(new Error(`Invalid configuration: ${filePath}\n${(<Error>error).message}`))}
+  catch (err) { throw new errors.InvalidConfigurationError(filePath); }
 
   const configDir = path.dirname(path.resolve(filePath));
 

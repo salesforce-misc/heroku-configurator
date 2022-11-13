@@ -2,6 +2,7 @@ import {expect, test} from '@oclif/test'
 import * as testutils from '../../utils'
 import {CliUx} from '@oclif/core'
 import * as config from '../../../src/lib/config'
+import {color} from '@heroku-cli/color'
 
 describe('configurator:apply', () => {
   const invalidConfigFile = testutils.writeConfig('some invalid data')
@@ -81,8 +82,16 @@ describe('configurator:apply', () => {
     .reply(404)
   })
   .command(['configurator:apply', '-f', 'doesnt_matter.yml'])
-  .catch(error => expect(error.message).to.contain('App not_found doesn\'t exist'))
+  .catch(error => expect(error.message).to.contain(`App ${color.app('not_found')} doesn\'t exist`))
   .it('should error out when configured project doesn\'t exist in heroku')
+
+  test
+  .stdout()
+  .stub(config, 'load', () => mockLoad({name: 'test', apps: {test: {config: {FOO: 'bar'}}}}))
+  .nock('https://api.heroku.com', api => {api.get('/apps/test/config-vars').reply(200, {FOO: 'bar'})})
+  .command(['configurator:apply', '-f', 'doesnt_matter.yml', '-a', 'not_found'])
+  .catch(err => expect(err.message).to.contain(`Unrecognized app ${color.app('not_found')}`))
+  .it('should let the user know when the targeted app doesnt exist')
 
   // TODO: test for patch borking
   // TODO: test for 500 when reading configs

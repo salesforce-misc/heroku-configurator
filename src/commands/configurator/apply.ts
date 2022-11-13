@@ -4,6 +4,8 @@ import {CliUx} from '@oclif/core'
 import {detailedDiff} from 'deep-object-diff'
 import {load, RootConfigType, fetchConfigs} from '../../lib/config'
 import {table} from 'table'
+import {color} from '@heroku-cli/color'
+import * as errors from '../../lib/errors'
 
 const ux = CliUx.ux;
 
@@ -157,12 +159,23 @@ export default class Apply extends Command {
   async run(): Promise<void> {
     const {flags} = this.parse(Apply)
 
-    const loadedConfig: RootConfigType = <RootConfigType>await load(flags.path);
+    const loadedConfig: RootConfigType = <RootConfigType>await load(flags.path).catch((err) => {
+      switch (err.constructor) {
+        case errors.InvalidConfigurationError:
+          ux.error(`Invalid configuration: ${err.path}`);
+        case errors.FileDoesNotExistError:
+          ux.error(`Config file (${flags.path}) does not exist`)
+      }
+    });
+
     let expectedConfig = normalizeExpectedConfig(loadedConfig);
-    let currentConfig = await fetchConfigs(Object.keys(loadedConfig.apps), this.heroku)
+
+    let currentConfig = <Record<string, Heroku.ConfigVars>>await fetchConfigs(Object.keys(loadedConfig.apps), this.heroku).catch((err) => {
+      if (err instanceof errors.AppNotFoundError) ux.error(`App ${color.app(err.app)} doesn't exist on Heroku`)
+    });
 
     if (flags.app) {
-      if (!(flags.app in currentConfig)) return Promise.reject(new Error(`Unrecognized app ${flags.app}`));
+      if (!(flags.app in currentConfig)) ux.error(`Unrecognized app ${color.app(flags.app)}`);
       [currentConfig, expectedConfig] = trimConfigs(currentConfig, expectedConfig, flags.app);
     }
 

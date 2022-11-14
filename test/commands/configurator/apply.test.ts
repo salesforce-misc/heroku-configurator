@@ -10,7 +10,7 @@ describe('configurator:apply', () => {
 
   test
   .command(['configurator:apply', '-f', 'non_existing_file.yml'])
-  .catch(error => expect(error.message).to.contain('no such file or directory'))
+  .catch(error => expect(error.message).to.contain('does not exist'))
   .it('should fail gracefully with a missing config file')
 
   test
@@ -82,7 +82,7 @@ describe('configurator:apply', () => {
     .reply(404)
   })
   .command(['configurator:apply', '-f', 'doesnt_matter.yml'])
-  .catch(error => expect(error.message).to.contain(`App ${color.app('not_found')} doesn\'t exist`))
+  .catch(error => expect(error.message).to.contain(`App ${color.app('not_found')} doesn't exist`))
   .it('should error out when configured project doesn\'t exist in heroku')
 
   test

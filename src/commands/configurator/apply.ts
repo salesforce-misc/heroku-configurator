@@ -163,8 +163,10 @@ export default class Apply extends Command {
       switch (err.constructor) {
         case errors.InvalidConfigurationError:
           ux.error(`Invalid configuration: ${err.path}`);
+          break;
         case errors.FileDoesNotExistError:
           ux.error(`Config file (${flags.path}) does not exist`)
+          break;
       }
     });
 

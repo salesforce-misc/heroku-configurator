@@ -18,5 +18,5 @@ export class FileError extends Error implements IFileError {
   }
 }
 
-export class InvalidConfigurationError extends FileError {};
-export class FileDoesNotExistError extends FileError {};
+export class InvalidConfigurationError extends FileError {}
+export class FileDoesNotExistError extends FileError {}

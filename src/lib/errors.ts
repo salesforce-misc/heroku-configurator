@@ -1,6 +1,6 @@
 interface IAppError {app: string}
 
-export class AppError extends Error {
+export class AppError extends Error implements IAppError {
   app: string
 
   constructor(app: string) {

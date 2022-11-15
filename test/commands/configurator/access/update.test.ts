@@ -1,5 +1,4 @@
 import {expect, test} from '@oclif/test'
-import {fancy} from 'fancy-test'
 import * as config from '../../../../src/lib/config'
 import * as testutils from '../../../utils'
 import {CliUx} from '@oclif/core'

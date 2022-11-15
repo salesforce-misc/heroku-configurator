@@ -22,7 +22,7 @@ async function getCollaborators(apps: string[], client: APIClient): Promise<Coll
 
   const promises = apps.map((app) => {
     return client.get(`/teams/apps/${app}/collaborators`)
-    .catch((err) => { throw new errors.TeamsAppRequiredError(app) })
+    .catch(() => { throw new errors.TeamsAppRequiredError(app) })
   });
   await Promise.all(promises)
   .then((responses) => {
@@ -73,7 +73,6 @@ function outputChanges(apps: string[], adds: Record<string, PermissionChange[]>,
     ux.styledHeader(app)
 
     if (app in adds) {
-      const changes = [['Collaborator', 'Permissions'], ...adds[app]];
       ux.log(table(
         [['Collaborator', 'Permissions'], ...adds[app].map((add) => [add.collaborator, add.expected])]
       ));

@@ -67,6 +67,8 @@ function formatDiffs(current: Record<string, Heroku.ConfigVars>, expected: Recor
 function outputDiffs(diffs: DiffByApp): void {
   console.log('The following changes have been detected:\n')
   for (const app of diffs) {
+    if (app.added.length == 0 && app.updated.length == 0) continue;
+
     CliUx.ux.styledHeader(`App: ${app.name}`)
     if (app.added.length > 0) {
       console.log('Added:')
@@ -174,7 +176,8 @@ export default class Apply extends Command {
     }
 
     const diffs = <Diff>detailedDiff(currentConfig, expectedConfig);
-    if (Object.keys(diffs.updated).length === 0 && Object.keys(diffs.added).length === 0) {
+    const numUpdates = Object.keys(diffs.updated).map((key): number => Object.keys(diffs.updated[key]).length).reduce((prev, cur, _) => prev + cur, 0)
+    if (numUpdates === 0 && Object.keys(diffs.added).length === 0) {
       ux.log('No diffs found, exiting.')
       return Promise.resolve();
     }

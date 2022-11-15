@@ -41,10 +41,23 @@ describe('configurator:apply', () => {
   .nock('https://api.heroku.com', api => {
     api
     .get(/apps\/.*\/config-vars/)
-    .reply(200, {FOO: 'foo'})
+    .reply(200, {FOO: 'foo', REMOTE: 'bar'})
   })
   .command(['configurator:apply', '-f', 'doesnt_matter.yml'])
   .it('should inform the user when configs match', ctx => {
+    expect(ctx.stdout).to.contain('No diffs found, exiting.')
+  })
+
+  test
+  .stdout()
+  .stub(config, 'load', () => testutils.mockLoad({name: 'test_app', apps: {test: {}}}))
+  .nock('https://api.heroku.com', api => {
+    api
+    .get(/apps\/.*\/config-vars/)
+    .reply(200, {FOO: 'foo', REMOTE: 'bar'})
+  })
+  .command(['configurator:apply', '-f', 'doesnt_matter.yml'])
+  .it('should report no diffs when loaded config is empty', ctx => {
     expect(ctx.stdout).to.contain('No diffs found, exiting.')
   })
 

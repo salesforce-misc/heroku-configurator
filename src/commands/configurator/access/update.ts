@@ -27,7 +27,7 @@ async function getCollaborators(apps: string[], client: APIClient): Promise<Coll
   await Promise.all(promises)
   .then((responses) => {
     responses.map((resp) => {
-      const collaborators = <CollaboratorsResponseType>CollaboratorsResponseSchema.parse(resp.body);
+      const collaborators = <CollaboratorsResponseType>CollaboratorsResponseSchema.parse(JSON.parse(<string>resp.body));
       for (const collaborator of collaborators) {
         collaboratorsByApp[collaborator.app.name][collaborator.user.email] = collaborator.permissions.map((permObj => permObj.name));
         collaboratorsByApp[collaborator.app.name][collaborator.user.email].sort();
@@ -121,7 +121,7 @@ export default class UpdateAccess extends Command {
   static flags = {
     path: flags.string({char: 'f', description: 'Path to the config file.', required: true}),
     app: flags.string({char: 'a', description: 'Single app to apply changes to.', required: false}),
-    permissions: flags.string({char: 'p', required: true})
+    permissions: flags.string({char: 'p', required: true, description: 'Comma-delimited list of permissions to apply to the collaborator(s)'})
   }
 
   static args = [
@@ -140,7 +140,11 @@ export default class UpdateAccess extends Command {
     const expectedPerms = flags.permissions.split(',').map(perm => perm.trim())
     expectedPerms.sort();
 
-    const apps = Object.keys(loadedConfig.apps)
+    let apps = Object.keys(loadedConfig.apps)
+    if (flags.app) {
+      if (!apps.includes(flags.app)) ux.error(`App ${flags.app} is not in configured apps`)
+      apps = [flags.app];
+    }
     let currentCollaboratorsByApp: CollaboratorsByApp = {}
     try { currentCollaboratorsByApp = await getCollaborators(apps, this.heroku) }
     catch(err) {

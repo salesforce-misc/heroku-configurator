@@ -92,7 +92,7 @@ function applyLocals(configObj: RootConfigType): void {
 export async function fetchConfig(app: string, client: APIClient): Promise<{app: string, config: Heroku.ConfigVars}> {
   try {
     const resp = await client.get(`/apps/${app}/config-vars`);
-    return Promise.resolve({app: app, config: <Heroku.ConfigVars>resp.body});
+    return Promise.resolve({app: app, config: <Heroku.ConfigVars>JSON.parse(<string>resp.body)});
   } catch(err) {
     throw new errors.AppNotFoundError(app);
   }

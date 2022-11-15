@@ -1,9 +1,10 @@
-heroku-configurator
-===================
+# heroku-configurator
 
 <!-- toc -->
 * [Installation](#installation)
 * [Usage](#usage)
+  * [configurator:apply](#apply)
+  * [configurator:access:update](#access-update)
 * [Anatomy of configuration](#anatomy)
 <!-- tocstop -->
 
@@ -12,8 +13,7 @@ heroku-configurator is a Heroku CLI plugin that empowers developers with the abi
 heroku-configurator only concerns itself with additions and modifications to application configuration, not deletions. This is intentional. It allows teams to define sensitive configuration that should not be stored in source control (i.e. passwords) directly in the environments and not be stomped by heroku-configurator executions.
 
 <!-- installation -->
-Installation
-------------
+## Installation
 
 ```
 $ git clone git@github.com:heroku/vaas-heroku-configurator.git
@@ -23,8 +23,38 @@ $ heroku plugins:link
 <!-- installationstop -->
 
 <!-- usage -->
-Usage
------
+## Usage
+```
+$ heroku help configurator
+Environment-based configuration for the Heroku CLI
+
+USAGE
+  $ heroku configurator:COMMAND
+
+TOPICS
+  configurator:access  Manage access for environments
+
+COMMANDS
+  configurator:apply  Applies the configuration to the defined applications.
+```
+
+<!-- apply -->
+### configurator:apply
+
+```
+$ heroku help configurator:apply
+Applies the configuration to the defined applications.
+
+USAGE
+  $ heroku configurator:apply
+
+OPTIONS
+  -a, --app=app    Single app to apply changes to.
+  -d, --dryrun     Dry run, don't apply changes
+  -f, --path=path  (required) Path to the config file.
+```
+
+Example:
 ```
 $ heroku configurator:apply -f example/staging.yml 
 The following changes have been detected:
@@ -51,7 +81,31 @@ Type configurator-staging to apply changes:
 ```
 
 Once all has been confirmed, configuration will have been applied to all Heroku applications.
+<!-- applystop -->
+
+<!-- access-update -->
+### configurator:access:update
+
+```
+$ heroku help configurator:access:update
+Update collaborator access to the defined set of applications.
+
+USAGE
+  $ heroku configurator:access:update COLLABORATORS
+
+ARGUMENTS
+  COLLABORATORS  A comma-delimited list of collaborator email addresses to apply the updates to
+
+OPTIONS
+  -a, --app=app                  Single app to apply changes to.
+  -f, --path=path                (required) Path to the config file.
+  -p, --permissions=permissions  (required) Comma-delimited list of permissions to apply to the collaborator(s)
+```
+
+Follows the identical confirmation flow as `configurator:apply`.
+<!-- access-updatestop -->
 <!-- usagestop -->
+
 
 <!-- anatomy -->
 The anatomy of configuration

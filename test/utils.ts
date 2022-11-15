@@ -1,5 +1,6 @@
 import {FileResult, fileSync as tmpFileSync} from 'tmp'
 import {writeFileSync} from 'node:fs'
+import * as config from '../src/lib/config'
 
 export const SIMPLE_CONFIG = `
 name: simple-config
@@ -50,4 +51,9 @@ export function writeConfig(data: string) : FileResult {
   const tmp = tmpFileSync()
   writeFileSync(tmp.name, data)
   return tmp
+}
+
+
+export async function mockLoad(config: Record<string, unknown>): Promise<config.RootConfigType | config.ExternalConfigType> {
+  return Promise.resolve(<config.RootConfigType | config.ExternalConfigType>config);
 }

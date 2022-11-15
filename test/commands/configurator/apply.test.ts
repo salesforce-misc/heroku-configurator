@@ -35,13 +35,9 @@ describe('configurator:apply', () => {
     expect(stdout).to.contain('Config successfully applied')
   })
 
-  async function mockLoad(config: Record<string, unknown>): Promise<config.RootConfigType | config.ExternalConfigType> {
-    return Promise.resolve(<config.RootConfigType | config.ExternalConfigType>config);
-  }
-
   test
   .stdout()
-  .stub(config, 'load', () => mockLoad({name: 'test_app', apps: {test: {config: {FOO: 'foo'}}}}))
+  .stub(config, 'load', () => testutils.mockLoad({name: 'test_app', apps: {test: {config: {FOO: 'foo'}}}}))
   .nock('https://api.heroku.com', api => {
     api
     .get(/apps\/.*\/config-vars/)
@@ -54,7 +50,7 @@ describe('configurator:apply', () => {
 
   test
   .stdout()
-  .stub(config, 'load', () => mockLoad({
+  .stub(config, 'load', () => testutils.mockLoad({
       name: 'test_config',
       apps: {
         test_a: {config: {FOO: 'foo'}},
@@ -75,7 +71,7 @@ describe('configurator:apply', () => {
 
   test
   .stdout()
-  .stub(config, 'load', () => mockLoad({name: 'test_notfound', apps: {not_found: {config: {FOO: 'bar'}}}}))
+  .stub(config, 'load', () => testutils.mockLoad({name: 'test_notfound', apps: {not_found: {config: {FOO: 'bar'}}}}))
   .nock('https://api.heroku.com', api => {
     api
     .get(/apps\/.*\/config-vars/)
@@ -87,7 +83,7 @@ describe('configurator:apply', () => {
 
   test
   .stdout()
-  .stub(config, 'load', () => mockLoad({name: 'test', apps: {test: {config: {FOO: 'bar'}}}}))
+  .stub(config, 'load', () => testutils.mockLoad({name: 'test', apps: {test: {config: {FOO: 'bar'}}}}))
   .nock('https://api.heroku.com', api => {api.get('/apps/test/config-vars').reply(200, {FOO: 'bar'})})
   .command(['configurator:apply', '-f', 'doesnt_matter.yml', '-a', 'not_found'])
   .catch(err => expect(err.message).to.contain(`Unrecognized app ${color.app('not_found')}`))

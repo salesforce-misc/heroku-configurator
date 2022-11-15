@@ -3,9 +3,9 @@
 <!-- toc -->
 * [Installation](#installation)
 * [Usage](#usage)
-  * [configurator:apply](#apply)
-  * [configurator:access:update](#access-update)
-* [Anatomy of configuration](#anatomy)
+  * [configurator:apply](#configuratorapply)
+  * [configurator:access:update](#configuratoraccessupdate)
+* [Anatomy of configuration](#the-anatomy-of-configuration)
 <!-- tocstop -->
 
 heroku-configurator is a Heroku CLI plugin that empowers developers with the ability to implement configuration as code to be applied to Heroku environments. This enables teams to follow a typical git (or other) source control review flow. With flexible configuration by composition built into the core of the plugin, complex service configurations can be broken up into logical chunks and applied to multiple apps and environments by simply including the desired block. The configurator plugin can be useful for single apps or complex service deployments over multiple apps in different pipeline stages.
@@ -108,12 +108,11 @@ Follows the identical confirmation flow as `configurator:apply`.
 
 
 <!-- anatomy -->
-The anatomy of configuration
-----------------------------
+## The anatomy of configuration
 
 There are two types of configuration files: Root and shared.
 
-## Root config
+### Root config
 ```
 name: <string>
 include: <array>
@@ -143,7 +142,7 @@ apps:
 
 Order of precedence for configuration application: Application-specific config > Locals > Imported
 
-## Shared config
+### Shared config
 
 ```
 name: <string>

@@ -27,7 +27,10 @@ async function getCollaborators(apps: string[], client: APIClient): Promise<Coll
   await Promise.all(promises)
   .then((responses) => {
     responses.map((resp) => {
-      const collaborators = <CollaboratorsResponseType>CollaboratorsResponseSchema.parse(JSON.parse(<string>resp.body));
+      // resp.body typecheck is needed it seems due to changes between node versions
+      const collaborators = <CollaboratorsResponseType>CollaboratorsResponseSchema.parse(
+        (typeof resp.body == 'string' ? JSON.parse(<string>resp.body) : resp.body)
+      );
       for (const collaborator of collaborators) {
         collaboratorsByApp[collaborator.app.name][collaborator.user.email] = collaborator.permissions.map((permObj => permObj.name));
         collaboratorsByApp[collaborator.app.name][collaborator.user.email].sort();

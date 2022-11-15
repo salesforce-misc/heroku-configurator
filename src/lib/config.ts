@@ -92,7 +92,10 @@ function applyLocals(configObj: RootConfigType): void {
 export async function fetchConfig(app: string, client: APIClient): Promise<{app: string, config: Heroku.ConfigVars}> {
   try {
     const resp = await client.get(`/apps/${app}/config-vars`);
-    return Promise.resolve({app: app, config: <Heroku.ConfigVars>resp.body});
+    // resp.body typecheck is needed it seems due to changes between node versions
+    return Promise.resolve({app: app, config: <Heroku.ConfigVars>
+      (typeof resp.body == 'string' ? JSON.parse(<string>resp.body) : resp.body)
+    });
   } catch(err) {
     throw new errors.AppNotFoundError(app);
   }

@@ -1,4 +1,6 @@
-export class AppNotFoundError extends Error {
+interface IAppError {app: string}
+
+export class AppError extends Error implements IAppError {
   app: string
 
   constructor(app: string) {
@@ -6,6 +8,9 @@ export class AppNotFoundError extends Error {
     this.app = app;
   }
 }
+
+export class AppNotFoundError extends AppError {}
+export class TeamsAppRequiredError extends AppError {}
 
 interface IFileError {path: string}
 

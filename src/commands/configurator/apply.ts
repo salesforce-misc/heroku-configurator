@@ -2,10 +2,11 @@ import {APIClient, Command, flags} from '@heroku-cli/command'
 import * as Heroku from '@heroku-cli/schema'
 import {CliUx} from '@oclif/core'
 import {detailedDiff} from 'deep-object-diff'
-import {load, RootConfigType, fetchConfigs} from '../../lib/config'
+import {RootConfigType, fetchConfigs} from '../../lib/config'
 import {table} from 'table'
 import {color} from '@heroku-cli/color'
 import * as errors from '../../lib/errors'
+import { loadConfig } from '../../lib/cli'
 
 const ux = CliUx.ux;
 
@@ -123,6 +124,7 @@ async function apply(diffs: Diff, client: APIClient): Promise<void> {
       if (userResponse == appKey) {
         CliUx.ux.log(`Applying config for ${appKey}`)
         const resp = await client.patch(`/apps/${appKey}/config-vars`, {body: patchesByApp[appKey]})
+        // TODO: this is gonna need to be a try/catch
         if (resp.statusCode == 200) {
           CliUx.ux.log('Config successfully applied')
         } else {
@@ -158,17 +160,7 @@ export default class Apply extends Command {
 
   async run(): Promise<void> {
     const {flags} = this.parse(Apply)
-
-    const loadedConfig: RootConfigType = <RootConfigType>await load(flags.path).catch((err) => {
-      switch (err.constructor) {
-        case errors.InvalidConfigurationError:
-          ux.error(`Invalid configuration: ${err.path}`);
-          break;
-        case errors.FileDoesNotExistError:
-          ux.error(`Config file (${flags.path}) does not exist`)
-          break;
-      }
-    });
+    const loadedConfig = await loadConfig(flags.path);
 
     let expectedConfig = normalizeExpectedConfig(loadedConfig);
 

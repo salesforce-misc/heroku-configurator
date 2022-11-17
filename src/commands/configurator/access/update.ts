@@ -1,5 +1,5 @@
 import { APIClient, Command, flags } from "@heroku-cli/command"
-import { loadConfig } from "../../../lib/cli"
+import { loadConfig, retry } from "../../../lib/cli"
 import * as errors from '../../../lib/errors'
 import {z} from 'zod'
 import { ux } from "@oclif/core/lib/cli-ux"
@@ -97,25 +97,17 @@ async function shouldApplyChanges(apps: string[], adds: Record<string, Permissio
 
 async function apply(apps: string[], adds: Record<string, PermissionChange[]>, updates: Record<string, PermissionChange[]>, client: APIClient): Promise<void> {
   for (const app of apps.filter((app) => app in adds || app in updates)) {
-    let userResponse = ''
-    let attempt = 0
-    const maxAttempts = 3
-
-    while (userResponse != app && ++attempt <= maxAttempts) {
-      userResponse = await ux.prompt(`Type ${app} to apply changes`)
-
-      if (userResponse === app) {
-        const promises = [
-          ...app in adds ? adds[app].map((add) => client.post(`/teams/apps/${app}/collaborators`, {body: {user: add.collaborator, permissions: add.expected}})) : [],
-          ...app in updates ? updates[app].map((update) => client.patch(`/teams/apps/${app}/collaborators/${update.collaborator}`, {body: {permissions: update.expected}})) : []
-        ]
-        await Promise.all(promises);
-        continue;
-      }
-    }
-    if (attempt >= maxAttempts) {
-      ux.log(`Max attempts exceeded, skipping ${app}`)
-    }
+    await retry(async(): Promise<void> => {
+      const promises = [
+        ...app in adds ? adds[app].map((add) => client.post(`/teams/apps/${app}/collaborators`, {body: {user: add.collaborator, permissions: add.expected}})) : [],
+        ...app in updates ? updates[app].map((update) => client.patch(`/teams/apps/${app}/collaborators/${update.collaborator}`, {body: {permissions: update.expected}})) : []
+      ]
+      await Promise.all(promises)
+      return Promise.resolve()
+    }, async (): Promise<boolean> => {
+      if (await ux.prompt(`Type ${app} to apply changes`) == app) return Promise.resolve(true)
+      return Promise.resolve(false)
+    }).catch((err) => ux.log(`Max attempts exceeded, skipping ${app}`))
   }
 }
 

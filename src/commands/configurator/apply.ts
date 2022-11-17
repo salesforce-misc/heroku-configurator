@@ -6,7 +6,7 @@ import {RootConfigType, fetchConfigs} from '../../lib/config'
 import {table} from 'table'
 import {color} from '@heroku-cli/color'
 import * as errors from '../../lib/errors'
-import { loadConfig } from '../../lib/cli'
+import { loadConfig, retry } from '../../lib/cli'
 
 const ux = CliUx.ux;
 
@@ -117,27 +117,20 @@ async function apply(diffs: Diff, client: APIClient): Promise<void> {
   }
 
   for (const appKey in patchesByApp) {
-    let userResponse = ''
-    let attempt = 0
-    const maxAttempts = 3
-    while (userResponse != appKey && ++attempt <= maxAttempts) {
-      userResponse = await CliUx.ux.prompt(`Type ${appKey} to apply changes`)
-
-      if (userResponse == appKey) {
-        CliUx.ux.log(`Applying config for ${appKey}`)
+    await retry(async (): Promise<void> => {
+      ux.log(`Applying config for ${appKey}`)
+      try {
         const resp = await client.patch(`/apps/${appKey}/config-vars`, {body: patchesByApp[appKey]})
-        // TODO: this is gonna need to be a try/catch
-        if (resp.statusCode == 200) {
-          CliUx.ux.log('Config successfully applied')
-        } else {
-          CliUx.ux.log('Unable to apply config, continuing')
-          continue
-        }
+        ux.log('Config successfully applied')
+        return Promise.resolve()
+      } catch (err) {
+        ux.log('Unabled to apply config, continuing')
+        return Promise.reject()
       }
-    }
-    if (attempt >= maxAttempts) {
-      CliUx.ux.log(`Max attempts exceeded, skipping ${appKey}`)
-    }
+    }, async (): Promise<boolean> => {
+      if (await ux.prompt(`Type ${appKey} to apply changes`) == appKey) return Promise.resolve(true)
+      return Promise.resolve(false)
+    }).catch((err) => ux.log(`Max attempts exceeded, skipping ${appKey}`))
   }
 }
 

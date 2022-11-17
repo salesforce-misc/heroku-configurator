@@ -123,13 +123,14 @@ async function apply(diffs: Diff, client: APIClient): Promise<void> {
         ux.log('Config successfully applied')
         return Promise.resolve()
       } catch (err) {
-        ux.log('Unabled to apply config, continuing')
-        return Promise.reject()
+        ux.warn(`Unable to apply config for ${color.app(appKey)}, continuing`)
+        return Promise.resolve()
       }
     }, async (): Promise<boolean> => {
       if (await ux.prompt(`Type ${appKey} to apply changes`) == appKey) return Promise.resolve(true)
       return Promise.resolve(false)
     }).catch(() => ux.log(`Max attempts exceeded, skipping ${appKey}`))
+    ux.log('Config application complete')
   }
 }
 
@@ -153,7 +154,8 @@ export default class Apply extends Command {
 
     const expectedConfig = normalizeExpectedConfig(apps, loadedConfig);
     const currentConfig = <Record<string, Heroku.ConfigVars>>await fetchConfigs(apps, this.heroku).catch((err) => {
-      if (err instanceof errors.AppNotFoundError) ux.error(`App ${color.app(err.app)} doesn't exist on Heroku`)
+      if (err instanceof errors.AppNotFoundError) ux.error(`App ${color.app(err.app)} doesn't exist on Heroku`);
+      ux.error(`Unknown error encountered when fetching config. Exiting.`)
     });
 
     const diffs = <Diff>detailedDiff(currentConfig, expectedConfig);

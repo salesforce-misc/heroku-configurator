@@ -97,7 +97,8 @@ export async function fetchConfig(app: string, client: APIClient): Promise<{app:
       (typeof resp.body == 'string' ? JSON.parse(<string>resp.body) : resp.body)
     });
   } catch(err) {
-    throw new errors.AppNotFoundError(app);
+    if ((<{statusCode: number}>err).statusCode === 404) throw new errors.AppNotFoundError(app);
+    throw err;
   }
 }
 

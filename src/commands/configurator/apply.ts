@@ -130,7 +130,7 @@ async function apply(diffs: Diff, client: APIClient): Promise<void> {
       if (await ux.prompt(`Type ${appKey} to apply changes`) == appKey) return Promise.resolve(true)
       return Promise.resolve(false)
     }).catch(() => ux.log(`Max attempts exceeded, skipping ${appKey}`))
-    ux.log('Config application complete')
+    ux.log('Done.')
   }
 }
 

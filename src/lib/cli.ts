@@ -21,9 +21,13 @@ export async function retry(func: () => Promise<void>, prompt: () => Promise<boo
   let attempt = 0
   while (++attempt <= maxAttempts) {
     if(await prompt()) {
-      await func()
+      try {
+        await func()
+      } catch(err) {
+        return Promise.reject(err)
+      }
       return Promise.resolve()
     }
   }
-  return Promise.reject()
+  return Promise.reject(new errors.RetryError())
 }

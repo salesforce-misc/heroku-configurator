@@ -48,7 +48,7 @@ describe('configurator:apply', () => {
   .stdout()
   .stub(config, 'load', () => testutils.mockLoad({name: 'test_app', apps: {test: {}}}))
   .nock('https://api.heroku.com', api => {
-    api.get(/apps\/.*\/config-vars/).reply(200, {FOO: 'foo', REMOTE: 'bar'})
+    api.get(/apps\/.*\/config-vars/).reply(200, {FOO: 'foo'})
   })
   .command(['configurator:apply', '-f', 'doesnt_matter.yml'])
   .it('should report no diffs when loaded config is empty', ctx => {
@@ -117,4 +117,20 @@ describe('configurator:apply', () => {
   .command(['configurator:apply', '-f', simpleConfigFile.name])
   .catch(error => expect(error.message).to.contain(`Unknown error encountered when fetching config. Exiting.`))
   .it('should exit early if config read fails unexpectedly')
+
+  test
+  .stdout()
+  .stderr()
+  .stub(CliUx.ux, 'confirm', () => async () => true)
+  .stub(CliUx.ux, 'prompt', () => async () => 'app_a')
+  .nock('https://api.heroku.com', api => {
+    api
+    .get(/apps\/.*\/config-vars/).reply(200, {FOO: 'foo'})
+    .patch(/apps\/.*\/config-vars/).reply(403)
+  })
+  .command(['configurator:apply', '-f', simpleConfigFile.name])
+  .it('should let the user know when they dont have access', ({stderr}) => {
+    // not sure this needs to be different than other errors
+    expect(stderr).to.contain('Unable to apply config')
+  })
 })

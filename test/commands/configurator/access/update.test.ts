@@ -30,6 +30,27 @@ describe('configurator:access:update', () => {
   })
 
   test
+  .stdout()
+  .stub(config, 'load', () => testutils.mockLoad({name: 'test', apps: {app_a: {}}}))
+  .stub(ux, 'confirm', () => async () => 'y')
+  .stub(ux, 'prompt', () => async () => 'wrong')
+  .nock('https://api.heroku.com', api => {
+    api
+    .get(/teams\/apps\/.*\/collaborators/)
+    .reply(200, [
+      {
+        app: {name: 'app_a'},
+        permissions: [{name: 'view'}],
+        user: {email: 'a@example.com'}
+      }
+    ])
+  })
+  .command(['configurator:access:update', '-p', 'view,operate', '-f', 'doesnt_matter.yml', 'a@example.com,b@example.com'])
+  .it('should skip when attempts have been exceeded', ({stdout}) => {
+    expect(stdout).to.contain('Max attempts exceeded')
+  })
+
+  test
   .stub(config, 'load', () => testutils.mockLoad({name: 'test', apps: {app_a: {}, app_b: {}}}))
   .nock('https://api.heroku.com', api => {
     api
@@ -39,5 +60,33 @@ describe('configurator:access:update', () => {
   })
   .command(['configurator:access:update', '-p', 'view', '-f', 'doesnt_matter.yml', 'a@example.com,b@example.com'])
   .catch((err) => expect(err.message).to.contain('must be a teams app'))
-  .it('should should fail gracefully if an app isnt a teams app successfully')
+  .it('should should fail gracefully if an app isnt a teams app')
+
+  test
+  .stub(config, 'load', () => testutils.mockLoad({name: 'test', apps: {app_a: {}}}))
+  .nock('https://api.heroku.com', api => {
+    api
+    .get(/teams\/apps\/.*\/collaborators/)
+    .reply(403)
+  })
+  .command(['configurator:access:update', '-p', 'view', '-f', 'doesnt_matter.yml', 'a@example.com,b@example.com'])
+  .catch((err) => expect(err.message).to.contain('You do not have access'))
+  .it('should let the user know if they don\'t have access to view app permissions')
+
+  test
+  .stderr()
+  .stub(config, 'load', () => testutils.mockLoad({name: 'test', apps: {app_a: {}}}))
+  .stub(ux, 'confirm', () => async () => 'y')
+  .stub(ux, 'prompt', () => async () => 'app_a')
+  .nock('https://api.heroku.com', api => {
+    api
+    .get('/teams/apps/app_a/collaborators')
+    .reply(200, [{app: {name: 'app_a'}, permissions: [{name: 'view'}], user: {email: 'a@example.com'}}])
+    .patch('/teams/apps/app_a/collaborators/a@example.com').reply(403)
+  })
+  .command(['configurator:access:update', '-p', 'view,operate', '-f', 'doesnt_matter.yml', 'a@example.com'])
+  .catch((err) => expect(err.message).to.contain('An error occurred'))
+  .it('should let the user know if they don\'t have access to update app permissions', ({stderr}) => {
+    expect(stderr).to.contain('You do not have access')
+  })
 })

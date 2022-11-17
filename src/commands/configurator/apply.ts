@@ -119,7 +119,7 @@ async function apply(diffs: Diff, client: APIClient): Promise<void> {
     await retry(async (): Promise<void> => {
       ux.log(`Applying config for ${appKey}`)
       try {
-        const resp = await client.patch(`/apps/${appKey}/config-vars`, {body: patchesByApp[appKey]})
+        await client.patch(`/apps/${appKey}/config-vars`, {body: patchesByApp[appKey]})
         ux.log('Config successfully applied')
         return Promise.resolve()
       } catch (err) {
@@ -129,19 +129,8 @@ async function apply(diffs: Diff, client: APIClient): Promise<void> {
     }, async (): Promise<boolean> => {
       if (await ux.prompt(`Type ${appKey} to apply changes`) == appKey) return Promise.resolve(true)
       return Promise.resolve(false)
-    }).catch((err) => ux.log(`Max attempts exceeded, skipping ${appKey}`))
+    }).catch(() => ux.log(`Max attempts exceeded, skipping ${appKey}`))
   }
-}
-
-function trimConfigs(currentConfig: NormalizedConfigType, expectedConfig: NormalizedConfigType, app: string): [NormalizedConfigType, NormalizedConfigType] {
-  // trim down in the event that an app is targeted
-  const trimmedCurrentConfig: NormalizedConfigType = {};
-  trimmedCurrentConfig[app] = currentConfig[app];
-
-  const trimmedExpectedConfig: NormalizedConfigType = {};
-  trimmedExpectedConfig[app] = expectedConfig[app];
-
-  return [trimmedCurrentConfig, trimmedExpectedConfig];
 }
 
 export default class Apply extends Command {
@@ -162,14 +151,13 @@ export default class Apply extends Command {
       apps = [flags.app]
     }
 
-    let expectedConfig = normalizeExpectedConfig(apps, loadedConfig);
-
-    let currentConfig = <Record<string, Heroku.ConfigVars>>await fetchConfigs(apps, this.heroku).catch((err) => {
+    const expectedConfig = normalizeExpectedConfig(apps, loadedConfig);
+    const currentConfig = <Record<string, Heroku.ConfigVars>>await fetchConfigs(apps, this.heroku).catch((err) => {
       if (err instanceof errors.AppNotFoundError) ux.error(`App ${color.app(err.app)} doesn't exist on Heroku`)
     });
 
     const diffs = <Diff>detailedDiff(currentConfig, expectedConfig);
-    const numUpdates = Object.keys(diffs.updated).map((key): number => Object.keys(diffs.updated[key]).length).reduce((prev, cur, _) => prev + cur, 0)
+    const numUpdates = Object.keys(diffs.updated).map((key): number => Object.keys(diffs.updated[key]).length).reduce((prev, cur) => prev + cur, 0)
     if (numUpdates === 0 && Object.keys(diffs.added).length === 0) {
       ux.log('No diffs found, exiting.')
       return Promise.resolve();

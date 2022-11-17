@@ -107,7 +107,7 @@ async function apply(apps: string[], adds: Record<string, PermissionChange[]>, u
     }, async (): Promise<boolean> => {
       if (await ux.prompt(`Type ${app} to apply changes`) == app) return Promise.resolve(true)
       return Promise.resolve(false)
-    }).catch((err) => ux.log(`Max attempts exceeded, skipping ${app}`))
+    }).catch(() => ux.log(`Max attempts exceeded, skipping ${app}`))
   }
 }
 

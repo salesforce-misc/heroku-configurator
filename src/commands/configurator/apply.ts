@@ -6,7 +6,7 @@ import {RootConfigType, fetchConfigs} from '../../lib/config'
 import {table} from 'table'
 import {color} from '@heroku-cli/color'
 import * as errors from '../../lib/errors'
-import { loadConfig } from '../../lib/cli'
+import { loadConfig, retry } from '../../lib/cli'
 
 const ux = CliUx.ux;
 
@@ -26,13 +26,12 @@ type DiffByApp = {
   updated: string[][]
 }[];
 
-function normalizeExpectedConfig(config: RootConfigType): NormalizedConfigType {
-  const apps = (<RootConfigType>config).apps
+function normalizeExpectedConfig(apps: string[], config: RootConfigType): NormalizedConfigType {
   const expectedConfig: NormalizedConfigType = {}
-  for (const appName in apps) {
+  for (const appName of apps) {
     expectedConfig[appName] = {}
-    for (const configKey in apps[appName].config) {
-      expectedConfig[appName][configKey] = String(apps[appName].config[configKey])
+    for (const configKey in config.apps[appName].config) {
+      expectedConfig[appName][configKey] = String(config.apps[appName].config[configKey])
     }
   }
 
@@ -117,39 +116,21 @@ async function apply(diffs: Diff, client: APIClient): Promise<void> {
   }
 
   for (const appKey in patchesByApp) {
-    let userResponse = ''
-    let attempt = 0
-    const maxAttempts = 3
-    while (userResponse != appKey && ++attempt <= maxAttempts) {
-      userResponse = await CliUx.ux.prompt(`Type ${appKey} to apply changes`)
-
-      if (userResponse == appKey) {
-        CliUx.ux.log(`Applying config for ${appKey}`)
-        const resp = await client.patch(`/apps/${appKey}/config-vars`, {body: patchesByApp[appKey]})
-        // TODO: this is gonna need to be a try/catch
-        if (resp.statusCode == 200) {
-          CliUx.ux.log('Config successfully applied')
-        } else {
-          CliUx.ux.log('Unable to apply config, continuing')
-          continue
-        }
+    await retry(async (): Promise<void> => {
+      ux.log(`Applying config for ${appKey}`)
+      try {
+        await client.patch(`/apps/${appKey}/config-vars`, {body: patchesByApp[appKey]})
+        ux.log('Config successfully applied')
+        return Promise.resolve()
+      } catch (err) {
+        ux.warn(`Unable to apply config for ${color.app(appKey)}, continuing`)
+        return Promise.resolve()
       }
-    }
-    if (attempt >= maxAttempts) {
-      CliUx.ux.log(`Max attempts exceeded, skipping ${appKey}`)
-    }
+    }, async (): Promise<boolean> => {
+      if (await ux.prompt(`Type ${appKey} to apply changes`) == appKey) return Promise.resolve(true)
+      return Promise.resolve(false)
+    }).catch(() => ux.log(`Max attempts exceeded, skipping ${appKey}`))
   }
-}
-
-function trimConfigs(currentConfig: NormalizedConfigType, expectedConfig: NormalizedConfigType, app: string): [NormalizedConfigType, NormalizedConfigType] {
-  // trim down in the event that an app is targeted
-  const trimmedCurrentConfig: NormalizedConfigType = {};
-  trimmedCurrentConfig[app] = currentConfig[app];
-
-  const trimmedExpectedConfig: NormalizedConfigType = {};
-  trimmedExpectedConfig[app] = expectedConfig[app];
-
-  return [trimmedCurrentConfig, trimmedExpectedConfig];
 }
 
 export default class Apply extends Command {
@@ -164,19 +145,20 @@ export default class Apply extends Command {
     const {flags} = this.parse(Apply)
     const loadedConfig = await loadConfig(flags.path);
 
-    let expectedConfig = normalizeExpectedConfig(loadedConfig);
-
-    let currentConfig = <Record<string, Heroku.ConfigVars>>await fetchConfigs(Object.keys(loadedConfig.apps), this.heroku).catch((err) => {
-      if (err instanceof errors.AppNotFoundError) ux.error(`App ${color.app(err.app)} doesn't exist on Heroku`)
-    });
-
+    let apps = Object.keys(loadedConfig.apps)
     if (flags.app) {
-      if (!(flags.app in currentConfig)) ux.error(`Unrecognized app ${color.app(flags.app)}`);
-      [currentConfig, expectedConfig] = trimConfigs(currentConfig, expectedConfig, flags.app);
+      if (!(flags.app in loadedConfig.apps)) ux.error(`App ${color.app(flags.app)} is not in configured apps`)
+      apps = [flags.app]
     }
 
+    const expectedConfig = normalizeExpectedConfig(apps, loadedConfig);
+    const currentConfig = <Record<string, Heroku.ConfigVars>>await fetchConfigs(apps, this.heroku).catch((err) => {
+      if (err instanceof errors.AppNotFoundError) ux.error(`App ${color.app(err.app)} doesn't exist on Heroku`);
+      ux.error(`Unknown error encountered when fetching config. Exiting.`)
+    });
+
     const diffs = <Diff>detailedDiff(currentConfig, expectedConfig);
-    const numUpdates = Object.keys(diffs.updated).map((key): number => Object.keys(diffs.updated[key]).length).reduce((prev, cur, _) => prev + cur, 0)
+    const numUpdates = Object.keys(diffs.updated).map((key): number => Object.keys(diffs.updated[key]).length).reduce((prev, cur) => prev + cur, 0)
     if (numUpdates === 0 && Object.keys(diffs.added).length === 0) {
       ux.log('No diffs found, exiting.')
       return Promise.resolve();

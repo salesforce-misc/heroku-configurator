@@ -1,10 +1,11 @@
 import { APIClient, Command, flags } from "@heroku-cli/command"
-import { loadConfig } from "../../../lib/cli"
+import { loadConfig, retry } from "../../../lib/cli"
 import * as errors from '../../../lib/errors'
 import {z} from 'zod'
 import { ux } from "@oclif/core/lib/cli-ux"
 import { color } from '@heroku-cli/color'
 import {table} from 'table'
+import {HTTPError} from 'http-call'
 
 const CollaboratorsResponseSchema = z.array(
   z.object({
@@ -22,7 +23,15 @@ async function getCollaborators(apps: string[], client: APIClient): Promise<Coll
 
   const promises = apps.map((app) => {
     return client.get(`/teams/apps/${app}/collaborators`)
-    .catch(() => { throw new errors.TeamsAppRequiredError(app) })
+    .catch((err) => { 
+      if (err instanceof HTTPError) {
+        switch (err.statusCode) {
+          case 404: throw new errors.TeamsAppRequiredError(app); break;
+          case 403: throw new errors.PermissionDeniedError(app); break;
+        }
+      }
+      throw err;
+    })
   });
   await Promise.all(promises)
   .then((responses) => {
@@ -97,25 +106,36 @@ async function shouldApplyChanges(apps: string[], adds: Record<string, Permissio
 
 async function apply(apps: string[], adds: Record<string, PermissionChange[]>, updates: Record<string, PermissionChange[]>, client: APIClient): Promise<void> {
   for (const app of apps.filter((app) => app in adds || app in updates)) {
-    let userResponse = ''
-    let attempt = 0
-    const maxAttempts = 3
+    await retry(async(): Promise<void> => {
+      const promises = [
+        ...app in adds ? adds[app].map((add) => client.post(`/teams/apps/${app}/collaborators`, {body: {user: add.collaborator, permissions: add.expected}})) : [],
+        ...app in updates ? updates[app].map((update) => client.patch(`/teams/apps/${app}/collaborators/${update.collaborator}`, {body: {permissions: update.expected}})) : []
+      ]
 
-    while (userResponse != app && ++attempt <= maxAttempts) {
-      userResponse = await ux.prompt(`Type ${app} to apply changes`)
-
-      if (userResponse === app) {
-        const promises = [
-          ...app in adds ? adds[app].map((add) => client.post(`/teams/apps/${app}/collaborators`, {body: {user: add.collaborator, permissions: add.expected}})) : [],
-          ...app in updates ? updates[app].map((update) => client.patch(`/teams/apps/${app}/collaborators/${update.collaborator}`, {body: {permissions: update.expected}})) : []
-        ]
-        await Promise.all(promises);
-        continue;
+      // this is kinda ugly but it allows us to continue processing all of the requests even if one fails.
+      let failure = false;
+      await Promise.allSettled(promises)
+      .then((results) => {
+        results.map((result) => {
+          if (result.status == 'rejected') {
+            failure = true
+            if (result.reason instanceof HTTPError && result.reason.statusCode === 403) ux.warn(`You do not have access to update permissions at ${result.reason.http.url}`)
+          }
+        })
+      })
+      return failure ? Promise.reject() : Promise.resolve()
+    }, async (): Promise<boolean> => {
+      if (await ux.prompt(`Type ${app} to apply changes`) == app) return Promise.resolve(true)
+      return Promise.resolve(false)
+    }).catch((err) => {
+      if (err && err.constructor) {
+        switch (err.constructor) {
+          case errors.RetryError: ux.log(`Max attempts exceeded, skipping ${app}`); break;
+        }
+      } else {
+        throw new Error('An error occurred while applying updates')
       }
-    }
-    if (attempt >= maxAttempts) {
-      ux.log(`Max attempts exceeded, skipping ${app}`)
-    }
+    })
   }
 }
 
@@ -144,14 +164,23 @@ export default class UpdateAccess extends Command {
     expectedPerms.sort();
 
     let apps = Object.keys(loadedConfig.apps)
+    apps.sort()
+
     if (flags.app) {
-      if (!apps.includes(flags.app)) ux.error(`App ${flags.app} is not in configured apps`)
+      if (!apps.includes(flags.app)) ux.error(`App ${color.app(flags.app)} is not in configured apps`)
       apps = [flags.app];
     }
     let currentCollaboratorsByApp: CollaboratorsByApp = {}
     try { currentCollaboratorsByApp = await getCollaborators(apps, this.heroku) }
     catch(err) {
-      if (err instanceof errors.TeamsAppRequiredError) ux.error(`App ${color.app(err.app)} must be a teams app`)
+      const typedError = <Error>err;
+      if (typedError.constructor) {
+        switch (typedError.constructor) {
+          case errors.PermissionDeniedError: ux.error(`You do not have access to modify permissions on ${(<errors.PermissionDeniedError>typedError).app}`); break;
+          case errors.TeamsAppRequiredError: ux.error(`App ${color.app((<errors.TeamsAppRequiredError>err).app)} must be a teams app`); break;
+        }
+      }
+      throw err;
     }
 
     const [adds, updates] = getPermissionsToChange(apps, collaboratorsToUpdate, currentCollaboratorsByApp, expectedPerms)
@@ -161,8 +190,12 @@ export default class UpdateAccess extends Command {
     }
 
     if (await shouldApplyChanges(Object.keys(loadedConfig.apps), adds, updates)) {
-      await apply(apps, adds, updates, this.heroku)
-      ux.log('Permissions updates applied successfully')
+      try {
+        await apply(apps, adds, updates, this.heroku)
+        ux.log('Permissions updates applied successfully')
+      } catch(err) {
+        ux.error(<Error>err)
+      }
     }
   }
 }

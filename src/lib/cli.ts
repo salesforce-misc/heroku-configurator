@@ -16,3 +16,18 @@ export async function loadConfig(path: string): Promise<RootConfigType> {
     }
   });
 }
+
+export async function retry(func: () => Promise<void>, prompt: () => Promise<boolean> = () => Promise.resolve(true), maxAttempts = 3): Promise<void> {
+  let attempt = 0
+  while (++attempt <= maxAttempts) {
+    if(await prompt()) {
+      try {
+        await func()
+      } catch(err) {
+        return Promise.reject(err)
+      }
+      return Promise.resolve()
+    }
+  }
+  return Promise.reject(new errors.RetryError())
+}

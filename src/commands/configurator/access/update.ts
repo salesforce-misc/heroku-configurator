@@ -137,7 +137,7 @@ export default class UpdateAccess extends Command {
 
     let apps = Object.keys(loadedConfig.apps)
     if (flags.app) {
-      if (!apps.includes(flags.app)) ux.error(`App ${flags.app} is not in configured apps`)
+      if (!apps.includes(flags.app)) ux.error(`App ${color.app(flags.app)} is not in configured apps`)
       apps = [flags.app];
     }
     let currentCollaboratorsByApp: CollaboratorsByApp = {}

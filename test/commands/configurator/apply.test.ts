@@ -74,7 +74,6 @@ describe('configurator:apply', () => {
   .nock('https://api.heroku.com', api => {
     api
     .get(/apps\/.*\/config-vars/)
-    .times(2)
     .reply(200, {FOO: 'foo'})
   })
   .command(['configurator:apply', '-f', 'doesnt_matter.yml', '--app', 'test_a'])
@@ -97,9 +96,8 @@ describe('configurator:apply', () => {
   test
   .stdout()
   .stub(config, 'load', () => testutils.mockLoad({name: 'test', apps: {test: {config: {FOO: 'bar'}}}}))
-  .nock('https://api.heroku.com', api => {api.get('/apps/test/config-vars').reply(200, {FOO: 'bar'})})
   .command(['configurator:apply', '-f', 'doesnt_matter.yml', '-a', 'not_found'])
-  .catch(err => expect(err.message).to.contain(`Unrecognized app ${color.app('not_found')}`))
+  .catch(err => expect(err.message).to.contain(`App ${color.app('not_found')} is not in configured apps`))
   .it('should let the user know when the targeted app doesnt exist')
 
   // TODO: test for patch borking

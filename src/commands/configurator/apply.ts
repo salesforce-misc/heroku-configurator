@@ -26,13 +26,12 @@ type DiffByApp = {
   updated: string[][]
 }[];
 
-function normalizeExpectedConfig(config: RootConfigType): NormalizedConfigType {
-  const apps = (<RootConfigType>config).apps
+function normalizeExpectedConfig(apps: string[], config: RootConfigType): NormalizedConfigType {
   const expectedConfig: NormalizedConfigType = {}
-  for (const appName in apps) {
+  for (const appName of apps) {
     expectedConfig[appName] = {}
-    for (const configKey in apps[appName].config) {
-      expectedConfig[appName][configKey] = String(apps[appName].config[configKey])
+    for (const configKey in config.apps[appName].config) {
+      expectedConfig[appName][configKey] = String(config.apps[appName].config[configKey])
     }
   }
 
@@ -157,16 +156,17 @@ export default class Apply extends Command {
     const {flags} = this.parse(Apply)
     const loadedConfig = await loadConfig(flags.path);
 
-    let expectedConfig = normalizeExpectedConfig(loadedConfig);
+    let apps = Object.keys(loadedConfig.apps)
+    if (flags.app) {
+      if (!(flags.app in loadedConfig.apps)) ux.error(`App ${color.app(flags.app)} is not in configured apps`)
+      apps = [flags.app]
+    }
 
-    let currentConfig = <Record<string, Heroku.ConfigVars>>await fetchConfigs(Object.keys(loadedConfig.apps), this.heroku).catch((err) => {
+    let expectedConfig = normalizeExpectedConfig(apps, loadedConfig);
+
+    let currentConfig = <Record<string, Heroku.ConfigVars>>await fetchConfigs(apps, this.heroku).catch((err) => {
       if (err instanceof errors.AppNotFoundError) ux.error(`App ${color.app(err.app)} doesn't exist on Heroku`)
     });
-
-    if (flags.app) {
-      if (!(flags.app in currentConfig)) ux.error(`Unrecognized app ${color.app(flags.app)}`);
-      [currentConfig, expectedConfig] = trimConfigs(currentConfig, expectedConfig, flags.app);
-    }
 
     const diffs = <Diff>detailedDiff(currentConfig, expectedConfig);
     const numUpdates = Object.keys(diffs.updated).map((key): number => Object.keys(diffs.updated[key]).length).reduce((prev, cur, _) => prev + cur, 0)

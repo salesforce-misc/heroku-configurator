@@ -6,6 +6,7 @@ import { ux } from "@oclif/core/lib/cli-ux"
 import { color } from '@heroku-cli/color'
 import {table} from 'table'
 import {HTTPError} from 'http-call'
+import { HerokuAPIError } from "@heroku-cli/command/lib/api-client"
 
 const CollaboratorsResponseSchema = z.array(
   z.object({
@@ -21,18 +22,7 @@ async function getCollaborators(apps: string[], client: APIClient): Promise<Coll
   const collaboratorsByApp: CollaboratorsByApp = {};
   apps.map((app) => collaboratorsByApp[app] = {})
 
-  const promises = apps.map((app) => {
-    return client.get(`/teams/apps/${app}/collaborators`)
-    .catch((err) => { 
-      if (err instanceof HTTPError) {
-        switch (err.statusCode) {
-          case 404: throw new errors.TeamsAppRequiredError(app); break;
-          case 403: throw new errors.PermissionDeniedError(app); break;
-        }
-      }
-      throw err;
-    })
-  });
+  const promises = apps.map((app) => client.get(`/teams/apps/${app}/collaborators`));
   await Promise.all(promises)
   .then((responses) => {
     responses.map((resp) => {
@@ -85,12 +75,14 @@ function outputChanges(apps: string[], adds: Record<string, PermissionChange[]>,
     ux.styledHeader(app)
 
     if (app in adds) {
+      ux.log(color.bold('Adding'))
       ux.log(table(
         [['Collaborator', 'Permissions'], ...adds[app].map((add) => [add.collaborator, add.expected])]
       ));
     }
 
     if (app in updates) {
+      ux.log(color.bold('Updating'))
       ux.log(table(
         [['Collaborator', 'Current permissions', 'New permissions'], ...updates[app].map((update) => [update.collaborator, update.current, update.expected])]
       ))
@@ -112,28 +104,23 @@ async function apply(apps: string[], adds: Record<string, PermissionChange[]>, u
         ...app in updates ? updates[app].map((update) => client.patch(`/teams/apps/${app}/collaborators/${update.collaborator}`, {body: {permissions: update.expected}})) : []
       ]
 
-      // this is kinda ugly but it allows us to continue processing all of the requests even if one fails.
-      let failure = false;
-      await Promise.allSettled(promises)
-      .then((results) => {
-        results.map((result) => {
-          if (result.status == 'rejected') {
-            failure = true
-            if (result.reason instanceof HTTPError && result.reason.statusCode === 403) ux.warn(`You do not have access to update permissions at ${result.reason.http.url}`)
-          }
-        })
-      })
-      return failure ? Promise.reject() : Promise.resolve()
+      try {await Promise.all(promises)}
+      catch(err) {return Promise.reject(err)}
+      return Promise.resolve()
     }, async (): Promise<boolean> => {
       if (await ux.prompt(`Type ${app} to apply changes`) == app) return Promise.resolve(true)
       return Promise.resolve(false)
     }).catch((err) => {
-      if (err && err.constructor) {
-        switch (err.constructor) {
-          case errors.RetryError: ux.log(`Max attempts exceeded, skipping ${app}`); break;
+      switch(err.constructor) {
+        case errors.RetryError: ux.log(`Max attempts exceeded, skipping ${app}`); break;
+        case HTTPError:
+          // fall through
+        case HerokuAPIError: {
+          ux.warn(`${err.message}`);
+          ux.warn(`Skipping ${app}`)
+          break;
         }
-      } else {
-        throw new Error('An error occurred while applying updates')
+        default: throw err;
       }
     })
   }

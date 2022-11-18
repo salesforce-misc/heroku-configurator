@@ -59,7 +59,8 @@ describe('configurator:access:update', () => {
     .reply(404)
   })
   .command(['configurator:access:update', '-p', 'view', '-f', 'doesnt_matter.yml', 'a@example.com,b@example.com'])
-  .catch((err) => expect(err.message).to.contain('must be a teams app'))
+  // these actually get reported in a more user-friendly way. the heroku cli error handling kicks in.
+  .catch((err) => expect(err.message).to.contain('Error 404'))
   .it('should should fail gracefully if an app isnt a teams app')
 
   test
@@ -70,7 +71,8 @@ describe('configurator:access:update', () => {
     .reply(403)
   })
   .command(['configurator:access:update', '-p', 'view', '-f', 'doesnt_matter.yml', 'a@example.com,b@example.com'])
-  .catch((err) => expect(err.message).to.contain('You do not have access'))
+  // these actually get reported in a more user-friendly way. the heroku cli error handling kicks in.
+  .catch((err) => expect(err.message).to.contain('Error 403'))
   .it('should let the user know if they don\'t have access to view app permissions')
 
   test
@@ -85,8 +87,24 @@ describe('configurator:access:update', () => {
     .patch('/teams/apps/app_a/collaborators/a@example.com').reply(403)
   })
   .command(['configurator:access:update', '-p', 'view,operate', '-f', 'doesnt_matter.yml', 'a@example.com'])
-  .catch((err) => expect(err.message).to.contain('An error occurred'))
   .it('should let the user know if they don\'t have access to update app permissions', ({stderr}) => {
-    expect(stderr).to.contain('You do not have access')
+    // these actually get reported in a more user-friendly way. the heroku cli error handling kicks in.
+    expect(stderr).to.contain('HTTP Error 403 for PATCH')
+  })
+
+  test
+  .stderr()
+  .stub(config, 'load', () => testutils.mockLoad({name: 'test', apps: {app_a: {}}}))
+  .stub(ux, 'confirm', () => async () => 'y')
+  .stub(ux, 'prompt', () => async () => 'app_a')
+  .nock('https://api.heroku.com', api => {
+    api
+    .get('/teams/apps/app_a/collaborators')
+    .reply(200, [{app: {name: 'app_a'}, permissions: [{name: 'view'}], user: {email: 'a@example.com'}}])
+    .patch('/teams/apps/app_a/collaborators/a@example.com').reply(422)
+  })
+  .command(['configurator:access:update', '-p', 'view,operate', '-f', 'doesnt_matter.yml', 'a@example.com'])
+  .it('should relay properly formatted errors back to the user', ({stderr}) => {
+    expect(stderr).to.contain('HTTP Error 422')
   })
 })

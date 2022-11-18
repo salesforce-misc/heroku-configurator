@@ -16,7 +16,7 @@ locals:
 apps:
   configurator-staging:
     include:
-      - canary.disabled
+      - canary.enabled
       - chatterbot.common
       - django.common
       - staging_overrides

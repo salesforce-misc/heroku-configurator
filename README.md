@@ -8,9 +8,7 @@
 
 Declarative, composable configuration-as-code for services deployed to Heroku.
 
-heroku-configurator is a Heroku CLI plugin that empowers developers with the ability to implement configuration as code to be applied to Heroku environments. This enables teams to follow a typical git (or other) source control review flow. With flexible configuration by composition built into the core of the plugin, complex service configurations can be broken up into logical chunks and applied to multiple apps and environments by simply including the desired block. The configurator plugin can be useful for single apps or complex service deployments over multiple apps in different pipeline stages.
-
-heroku-configurator only concerns itself with additions and modifications to application configuration, not deletions. This is intentional. It allows teams to define sensitive configuration that should not be stored in source control (i.e. passwords) directly in the environments and not be stomped by heroku-configurator executions.
+Configurator is a Heroku CLI plugin that empowers developers with the ability to implement configuration as code to be applied to Heroku environments. This enables teams to follow a typical git (or other) source control review flow. With flexible composition-based configuration built into the core of the plugin, complex service configurations can be broken up into logical chunks and applied to multiple apps and environments by simply including the desired block. Sensitive configuration (i.e. passwords) can also be defined to allow for remote-only configuration. The configurator plugin can be useful for single apps or complex service deployments over multiple apps in different pipeline stages.
 
 ## Installation
 
@@ -48,6 +46,7 @@ OPTIONS
   -a, --app=app    Single app to apply changes to.
   -d, --dryrun     Dry run, don't apply changes
   -f, --path=path  (required) Path to the config file.
+  --nodelete       Do not delete config keys
 ```
 
 Example:

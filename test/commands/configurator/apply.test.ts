@@ -3,10 +3,14 @@ import * as testutils from '../../utils'
 import {CliUx} from '@oclif/core'
 import * as config from '../../../src/lib/config'
 import {color} from '@heroku-cli/color'
+import * as sinon from 'sinon'
 
 describe('configurator:apply', () => {
   const invalidConfigFile = testutils.writeConfig('some invalid data')
   const simpleConfigFile = testutils.writeConfig(testutils.SIMPLE_CONFIG)
+  let sinonStub: any | null = null;
+
+  beforeEach(() => sinonStub = null)
 
   test
   .command(['configurator:apply', '-f', 'non_existing_file.yml'])
@@ -35,6 +39,20 @@ describe('configurator:apply', () => {
 
   test
   .stdout()
+  .stub(CliUx.ux, 'confirm', () => async () => true)
+  .stub(CliUx.ux, 'prompt', () => async () => 'wrong')
+  .nock('https://api.heroku.com', api => {
+    api
+    .get(/apps\/.*\/config-vars/).reply(200, {FOO: 'foo'})
+  })
+  .command(['configurator:apply', '-f', simpleConfigFile.name])
+  .it('should let the user know when skipped due to input mismatch', ({stdout}) => {
+    // TODO: more meaningful test. maybe regex parsing the table or even add json output support?
+    expect(stdout).to.contain('Max attempts exceeded, skipping app_a')
+  })
+
+  test
+  .stdout()
   .stub(config, 'load', () => testutils.mockLoad({name: 'test_app', apps: {test: {config: {FOO: 'foo'}, remote_config: ['REMOTE']}}}))
   .nock('https://api.heroku.com', api => {
     api.get(/apps\/.*\/config-vars/).reply(200, {FOO: 'foo', REMOTE: 'bar'})
@@ -46,9 +64,9 @@ describe('configurator:apply', () => {
 
   test
   .stdout()
-  .stub(config, 'load', () => testutils.mockLoad({name: 'test_app', apps: {test: {remote_config: ['FOO']}}}))
+  .stub(config, 'load', () => testutils.mockLoad({name: 'test_app', apps: {test: {config: {}, remote_config: []}}}))
   .nock('https://api.heroku.com', api => {
-    api.get(/apps\/.*\/config-vars/).reply(200, {FOO: 'foo'})
+    api.get(/apps\/.*\/config-vars/).reply(200, {})
   })
   .command(['configurator:apply', '-f', 'doesnt_matter.yml'])
   .it('should report no diffs when loaded config is empty', ctx => {
@@ -150,5 +168,59 @@ describe('configurator:apply', () => {
     .patch('/apps/test/config-vars', {DELETE: null}).reply(200)
   })
   .command(['configurator:apply', '-f', 'doesnt_matter.yml'])
-  .it('should delete the key not marked remote')
+  .it('should delete the key not marked remote', ({stdout}) => {
+    expect(stdout).to.contain('DELETE')
+  })
+
+  test
+  .stdout()
+  .stderr()
+  .stub(CliUx.ux, 'confirm', () => async () => true)
+  .stub(CliUx.ux, 'prompt', () => async () => 'test')
+  .stub(config, 'load', () => testutils.mockLoad({name: 'test', apps: {test: {config: {FOO: 'foo'}, remote_config: ['REMOTE']}}}))
+  .nock('https://api.heroku.com', api => {
+    api
+    .get('/apps/test/config-vars').reply(200, {
+      FOO: 'foo',
+      REMOTE: 'remote',
+      DELETE: 'bar'
+    })
+  })
+  .command(['configurator:apply', '-f', 'doesnt_matter.yml', '--nodelete'])
+  .it('should not delete if run with nodelete', ({stdout}) => {
+    expect(stdout).to.not.contain('DELETE')
+  })
+
+  test
+  .stdout()
+  .stderr()
+  .stub(CliUx.ux, 'confirm', () => async () => true)
+  .stub(CliUx.ux, 'prompt', () => async () => {
+    // there's gotta be a better way to do this
+    if (!sinonStub) {
+      sinonStub = sinon.stub()
+      sinonStub.onCall(0).returns('test_a').onCall(1).returns('test_b')
+    }
+    const rval = sinonStub()
+    return Promise.resolve(rval)
+  })
+  .stub(config, 'load', () => testutils.mockLoad({
+    name: 'test',
+    apps: {
+      test_a: {config: {FOO: 'bar'}, remote_config: ['REMOTE']},
+      test_b: {config: {FOO: 'bar'}, remote_config: ['REMOTE']},
+    }
+  }))
+  .nock('https://api.heroku.com', api => {
+    api
+    .get('/apps/test_a/config-vars').reply(200, {FOO: 'foo'})
+    .get('/apps/test_b/config-vars').reply(200, {FOO: 'foo'})
+    .patch('/apps/test_a/config-vars').reply(200)
+    .patch('/apps/test_b/config-vars').reply(403)
+  })
+  .command(['configurator:apply', '-f', 'doesnt_matter.yml'])
+  .it('should warn the user when an error occurs but complete the rest', ({stdout, stderr}) => {
+    expect(stdout).to.contain('Applying config for test_a\nConfig successfully applied') &&
+    expect(stderr).to.contain(`Unable to apply config`)
+  })
 })

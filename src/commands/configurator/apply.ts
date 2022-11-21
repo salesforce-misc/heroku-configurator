@@ -42,7 +42,7 @@ function normalizeExpectedConfig(apps: string[], config: RootConfigType): Normal
 function formatDiffs(current: Record<string, Heroku.ConfigVars>, expected: Record<string, Heroku.ConfigVars>, diff: Diff): DiffByApp {
   const formattedDiffs: DiffByApp = []
   for (const app in expected) {
-    if (app in diff.updated || app in diff.added) {
+    if (app in diff.updated || app in diff.added || app in diff.deleted) {
       const updated: string[][] = []
       for (const key in diff.updated[app]) {
         updated.push([key, diff.updated[app][key], current[app][key]])
@@ -73,7 +73,7 @@ function formatDiffs(current: Record<string, Heroku.ConfigVars>, expected: Recor
 function outputDiffs(diffs: DiffByApp): void {
   console.log('The following changes have been detected:\n')
   for (const app of diffs) {
-    if (app.added.length == 0 && app.updated.length == 0) continue;
+    if (app.added.length == 0 && app.updated.length == 0 && app.deleted.length == 0) continue;
 
     CliUx.ux.styledHeader(`App: ${app.name}`)
     if (app.added.length > 0) {
@@ -102,15 +102,12 @@ function outputDiffs(diffs: DiffByApp): void {
 }
 
 async function shouldApplyDiffs(): Promise<boolean> {
-  return new Promise<boolean>((resolve, reject) => {
-    CliUx.ux.confirm('Apply these changes?')
-    .then(rval => resolve(rval))
-    .catch(error => reject(error))
-  })
+  return await ux.confirm('Apply these changes?')
 }
 
 async function apply(diffs: Diff, client: APIClient): Promise<void> {
   const patchesByApp: Record<string, Record<string, string|null>> = {}
+
   if (diffs.added) {
     for (const appKey in diffs.added) {
       patchesByApp[appKey] = {}
@@ -187,7 +184,8 @@ export default class Apply extends Command {
   static flags = {
     path: flags.string({char: 'f', description: 'Path to the config file.', required: true}),
     app: flags.string({char: 'a', description: 'Single app to apply changes to.', required: false}),
-    dryrun: flags.boolean({char: 'd', description: 'Dry run, don\'t apply changes', required: false})
+    dryrun: flags.boolean({char: 'd', description: 'Dry run, don\'t apply changes', required: false}),
+    nodelete: flags.boolean({description: 'Do not delete config keys', required: false})
   }
 
   async run(): Promise<void> {
@@ -208,13 +206,19 @@ export default class Apply extends Command {
 
     const diffs = <Diff>detailedDiff(currentConfig, expectedConfig);
     // remove deletions from diffs that have been marked as remote config
-    for (const app of apps.filter((app) => app in diffs.deleted)) {
-      for (const key in diffs.deleted[app]) {
-        if (loadedConfig.apps[app].remote_config.indexOf(key) > -1) {
-          delete diffs.deleted[app][key]
+    if (!flags.nodelete) {
+      for (const app of apps.filter((app) => app in diffs.deleted)) {
+        for (const key in diffs.deleted[app]) {
+          if (loadedConfig.apps[app].remote_config.indexOf(key) > -1) {
+            delete diffs.deleted[app][key]
+          }
         }
+        if (Object.keys(diffs.deleted[app]).length === 0) delete diffs.deleted[app]
       }
-      if (Object.keys(diffs.deleted[app]).length === 0) delete diffs.deleted[app]
+    } else {
+      for (const app of apps.filter((app) => app in diffs.deleted)) {
+        delete diffs.deleted[app];
+      }
     }
     const numUpdates = Object.keys(diffs.updated).map((key): number => Object.keys(diffs.updated[key]).length).reduce((prev, cur) => prev + cur, 0)
     if (numUpdates === 0 && Object.keys(diffs.added).length === 0 && Object.keys(diffs.deleted).length === 0) {

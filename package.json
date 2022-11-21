@@ -1,15 +1,15 @@
 {
   "name": "heroku-configurator",
-  "version": "0.0.0",
-  "description": "oclif example Hello World CLI",
+  "version": "0.1.0",
+  "description": "Declarative, composable configurator-as-code for services deployed to Heroku",
   "author": "Demian Brecht @demianbrecht",
   "bin": {
     "heroku-configurator": "./bin/run"
   },
-  "homepage": "https://github.com/demianbrecht/hello-world",
+  "homepage": "https://github.com/salesforce/heroku-configurator",
   "license": "MIT",
   "main": "dist/index.js",
-  "repository": "demianbrecht/hello-world",
+  "repository": "salesforce/heroku-configurator",
   "files": [
     "/bin",
     "/dist",
@@ -48,7 +48,8 @@
     "ts-node": "^10.9.1",
     "tslib": "^2.4.1",
     "tsup": "^6.4.0",
-    "typescript": "^4.8.4"
+    "typescript": "^4.8.4",
+    "nyc": "^15.1.0"
   },
   "oclif": {
     "bin": "heroku-configurator",
@@ -68,13 +69,23 @@
       }
     }
   },
+  "nyc": {
+    "require": [
+      "ts-node/register"
+    ],
+    "extension": [
+      ".ts"
+    ],
+    "sourceMap": true,
+    "instrument": true
+  },
   "scripts": {
     "build": "shx rm -rf dist && tsup",
     "lint": "eslint . --ext .ts --config .eslintrc",
     "postpack": "shx rm -f oclif.manifest.json",
     "posttest": "yarn lint",
     "prepack": "yarn build && oclif manifest && oclif readme",
-    "test": "mocha --forbid-only \"test/**/*.test.ts\"",
+    "test": "nyc --check-coverage --lines 92 mocha --forbid-only \"test/**/*.test.ts\"",
     "version": "oclif readme && git add README.md"
   },
   "engines": {
@@ -82,7 +93,10 @@
   },
   "bugs": "https://github.com/demianbrecht/hello-world/issues",
   "keywords": [
-    "oclif"
+    "oclif",
+    "heroku",
+    "configuration",
+    "config"
   ],
   "types": "dist/index.d.ts"
 }

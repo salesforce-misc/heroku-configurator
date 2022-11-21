@@ -35,7 +35,7 @@ describe('configurator:apply', () => {
 
   test
   .stdout()
-  .stub(config, 'load', () => testutils.mockLoad({name: 'test_app', apps: {test: {config: {FOO: 'foo'}}}}))
+  .stub(config, 'load', () => testutils.mockLoad({name: 'test_app', apps: {test: {config: {FOO: 'foo'}, remote_config: ['REMOTE']}}}))
   .nock('https://api.heroku.com', api => {
     api.get(/apps\/.*\/config-vars/).reply(200, {FOO: 'foo', REMOTE: 'bar'})
   })
@@ -46,7 +46,7 @@ describe('configurator:apply', () => {
 
   test
   .stdout()
-  .stub(config, 'load', () => testutils.mockLoad({name: 'test_app', apps: {test: {}}}))
+  .stub(config, 'load', () => testutils.mockLoad({name: 'test_app', apps: {test: {remote_config: ['FOO']}}}))
   .nock('https://api.heroku.com', api => {
     api.get(/apps\/.*\/config-vars/).reply(200, {FOO: 'foo'})
   })
@@ -60,8 +60,8 @@ describe('configurator:apply', () => {
   .stub(config, 'load', () => testutils.mockLoad({
       name: 'test_config',
       apps: {
-        test_a: {config: {FOO: 'foo'}},
-        test_b: {config: {FOO: 'bar'}},
+        test_a: {config: {FOO: 'foo'}, remote_config: []},
+        test_b: {config: {FOO: 'bar'}, remote_config: []},
       },
     })
   )
@@ -75,7 +75,7 @@ describe('configurator:apply', () => {
 
   test
   .stdout()
-  .stub(config, 'load', () => testutils.mockLoad({name: 'test_notfound', apps: {not_found: {config: {FOO: 'bar'}}}}))
+  .stub(config, 'load', () => testutils.mockLoad({name: 'test_notfound', apps: {not_found: {config: {FOO: 'bar'}, remote_config: []}}}))
   .nock('https://api.heroku.com', api => {
     api.get(/apps\/.*\/config-vars/).reply(404)
   })
@@ -86,7 +86,7 @@ describe('configurator:apply', () => {
   test
   .stdout()
   .stderr()
-  .stub(config, 'load', () => testutils.mockLoad({name: 'test', apps: {test: {config: {FOO: 'bar'}}}}))
+  .stub(config, 'load', () => testutils.mockLoad({name: 'test', apps: {test: {config: {FOO: 'bar'}, remote_config: []}}}))
   .command(['configurator:apply', '-f', 'doesnt_matter.yml', '-a', 'not_found'])
   .catch(err => expect(err.message).to.contain(`App ${color.app('not_found')} is not in configured apps`))
   .it('should let the user know when the targeted app doesnt exist')
@@ -133,4 +133,22 @@ describe('configurator:apply', () => {
     // not sure this needs to be different than other errors
     expect(stderr).to.contain('Unable to apply config')
   })
+
+  test
+  .stdout()
+  .stderr()
+  .stub(CliUx.ux, 'confirm', () => async () => true)
+  .stub(CliUx.ux, 'prompt', () => async () => 'test')
+  .stub(config, 'load', () => testutils.mockLoad({name: 'test', apps: {test: {config: {FOO: 'foo'}, remote_config: ['REMOTE']}}}))
+  .nock('https://api.heroku.com', api => {
+    api
+    .get('/apps/test/config-vars').reply(200, {
+      FOO: 'foo',
+      REMOTE: 'remote',
+      DELETE: 'bar'
+    })
+    .patch('/apps/test/config-vars', {DELETE: null}).reply(200)
+  })
+  .command(['configurator:apply', '-f', 'doesnt_matter.yml'])
+  .it('should delete the key not marked remote')
 })

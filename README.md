@@ -6,7 +6,7 @@
   * [configurator:access:update](#configuratoraccessupdate)
 * [Anatomy of configuration](#the-anatomy-of-configuration)
 
-Declarative, composable configuration-as-code for services deployed to Heroku.
+Declarative, composable, configuration-as-code for services deployed to Heroku.
 
 Configurator is a Heroku CLI plugin that empowers developers with the ability to implement configuration as code to be applied to Heroku environments. This enables teams to follow a typical git (or other) source control review flow. With flexible composition-based configuration built into the core of the plugin, complex service configurations can be broken up into logical chunks and applied to multiple apps and environments by simply including the desired block. Sensitive configuration (i.e. passwords) can also be defined to allow for remote-only configuration. The configurator plugin can be useful for single apps or complex service deployments over multiple apps in different pipeline stages.
 

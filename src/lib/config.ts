@@ -1,14 +1,13 @@
 import {parse} from 'yaml'
 import * as fs from 'fs'
 import {z} from 'zod'
-import * as Heroku from '@heroku-cli/schema'
-import {APIClient} from '@heroku-cli/command'
 import * as path from 'path'
 import * as errors from '../lib/errors'
 
 // TODO: could probably add some constraints to these
 const ConfigBlockSchema = z.object({
   config: z.record(z.string(), z.string().or(z.number()).or(z.boolean())).default({}),
+  remote_config: z.array(z.string()).default([])
 })
 const ExternalConfigSchema = z.object({
   name: z.string(),
@@ -87,32 +86,6 @@ function applyLocals(configObj: RootConfigType): void {
       }
     }
   }
-}
-
-export async function fetchConfig(app: string, client: APIClient): Promise<{app: string, config: Heroku.ConfigVars}> {
-  try {
-    const resp = await client.get(`/apps/${app}/config-vars`);
-    // resp.body typecheck is needed it seems due to changes between node versions
-    return Promise.resolve({app: app, config: <Heroku.ConfigVars>
-      (typeof resp.body == 'string' ? JSON.parse(<string>resp.body) : resp.body)
-    });
-  } catch(err) {
-    if ((<{statusCode: number}>err).statusCode === 404) throw new errors.AppNotFoundError(app);
-    throw err;
-  }
-}
-
-export async function fetchConfigs(apps: string[], client: APIClient): Promise<Record<string, Heroku.ConfigVars>> {
-  const promises: Promise<{app: string, config: Heroku.ConfigVars}>[] = []
-  const appConfigs: Record<string, Heroku.ConfigVars> = {}
-
-  apps.map(app => promises.push(fetchConfig(app, client)));
-
-  await Promise.all(promises)
-  .then(values => {
-    values.map((config => {appConfigs[config.app] = config.config}));
-  })
-  return Promise.resolve(appConfigs);
 }
 
 // TODO: would probably be best to break this up between loading root and external configs

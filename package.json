@@ -1,15 +1,15 @@
 {
   "name": "heroku-configurator",
-  "version": "0.0.0",
-  "description": "oclif example Hello World CLI",
+  "version": "0.1.0",
+  "description": "Declarative, composable configurator-as-code for services deployed to Heroku",
   "author": "Demian Brecht @demianbrecht",
   "bin": {
     "heroku-configurator": "./bin/run"
   },
-  "homepage": "https://github.com/demianbrecht/hello-world",
+  "homepage": "https://github.com/salesforce/heroku-configurator",
   "license": "MIT",
   "main": "dist/index.js",
-  "repository": "demianbrecht/hello-world",
+  "repository": "salesforce/heroku-configurator",
   "files": [
     "/bin",
     "/dist",
@@ -25,6 +25,7 @@
     "@oclif/plugin-help": "^5",
     "@oclif/plugin-plugins": "^2.1.4",
     "deep-object-diff": "^1.1.9",
+    "sinon": "^14.0.2",
     "table": "^6.8.1",
     "tmp": "^0.2.1",
     "yaml": "^2.1.3",
@@ -43,6 +44,7 @@
     "eslint-config-oclif": "^4",
     "eslint-config-oclif-typescript": "^1.0.3",
     "mocha": "^10.1.0",
+    "nyc": "^15.1.0",
     "oclif": "^3",
     "shx": "^0.3.4",
     "ts-node": "^10.9.1",
@@ -68,13 +70,23 @@
       }
     }
   },
+  "nyc": {
+    "require": [
+      "ts-node/register"
+    ],
+    "extension": [
+      ".ts"
+    ],
+    "sourceMap": true,
+    "instrument": true
+  },
   "scripts": {
     "build": "shx rm -rf dist && tsup",
     "lint": "eslint . --ext .ts --config .eslintrc",
     "postpack": "shx rm -f oclif.manifest.json",
     "posttest": "yarn lint",
     "prepack": "yarn build && oclif manifest && oclif readme",
-    "test": "mocha --forbid-only \"test/**/*.test.ts\"",
+    "test": "nyc --check-coverage --lines 95 mocha --forbid-only \"test/**/*.test.ts\"",
     "version": "oclif readme && git add README.md"
   },
   "engines": {
@@ -82,7 +94,10 @@
   },
   "bugs": "https://github.com/demianbrecht/hello-world/issues",
   "keywords": [
-    "oclif"
+    "oclif",
+    "heroku",
+    "configuration",
+    "config"
   ],
   "types": "dist/index.d.ts"
 }

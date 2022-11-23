@@ -2,7 +2,7 @@ import {APIClient, Command, flags} from '@heroku-cli/command'
 import * as Heroku from '@heroku-cli/schema'
 import {CliUx} from '@oclif/core'
 import {detailedDiff} from 'deep-object-diff'
-import {RootConfigType, fetchConfigs} from '../../lib/config'
+import {RootConfigType} from '../../lib/config'
 import {table} from 'table'
 import {color} from '@heroku-cli/color'
 import * as errors from '../../lib/errors'
@@ -23,7 +23,8 @@ type Diff = {
 type DiffByApp = {
   name: string,
   added: string[][],
-  updated: string[][]
+  updated: string[][],
+  deleted: string[][]
 }[];
 
 function normalizeExpectedConfig(apps: string[], config: RootConfigType): NormalizedConfigType {
@@ -41,7 +42,7 @@ function normalizeExpectedConfig(apps: string[], config: RootConfigType): Normal
 function formatDiffs(current: Record<string, Heroku.ConfigVars>, expected: Record<string, Heroku.ConfigVars>, diff: Diff): DiffByApp {
   const formattedDiffs: DiffByApp = []
   for (const app in expected) {
-    if (app in diff.updated || app in diff.added) {
+    if (app in diff.updated || app in diff.added || app in diff.deleted) {
       const updated: string[][] = []
       for (const key in diff.updated[app]) {
         updated.push([key, diff.updated[app][key], current[app][key]])
@@ -52,10 +53,16 @@ function formatDiffs(current: Record<string, Heroku.ConfigVars>, expected: Recor
         added.push([key, diff.added[app][key]])
       }
 
+      const deleted: string[][] = []
+      for (const key in diff.deleted[app]) {
+        deleted.push([key])
+      }
+
       formattedDiffs.push({
         name: app,
         added: added,
         updated: updated,
+        deleted: deleted,
       })
     }
   }
@@ -66,7 +73,7 @@ function formatDiffs(current: Record<string, Heroku.ConfigVars>, expected: Recor
 function outputDiffs(diffs: DiffByApp): void {
   console.log('The following changes have been detected:\n')
   for (const app of diffs) {
-    if (app.added.length == 0 && app.updated.length == 0) continue;
+    if (app.added.length == 0 && app.updated.length == 0 && app.deleted.length == 0) continue;
 
     CliUx.ux.styledHeader(`App: ${app.name}`)
     if (app.added.length > 0) {
@@ -84,19 +91,23 @@ function outputDiffs(diffs: DiffByApp): void {
         {columnDefault: {width: 50}},
       ))
     }
+
+    if (app.deleted.length > 0) {
+      console.log('Deleted:')
+      ux.log(table(
+        [['Variable'], ...app.deleted]
+      ))
+    }
   }
 }
 
 async function shouldApplyDiffs(): Promise<boolean> {
-  return new Promise<boolean>((resolve, reject) => {
-    CliUx.ux.confirm('Apply these changes?')
-    .then(rval => resolve(rval))
-    .catch(error => reject(error))
-  })
+  return await ux.confirm('Apply these changes?')
 }
 
 async function apply(diffs: Diff, client: APIClient): Promise<void> {
-  const patchesByApp: Record<string, Record<string, string>> = {}
+  const patchesByApp: Record<string, Record<string, string|null>> = {}
+
   if (diffs.added) {
     for (const appKey in diffs.added) {
       patchesByApp[appKey] = {}
@@ -111,6 +122,15 @@ async function apply(diffs: Diff, client: APIClient): Promise<void> {
       if (!patchesByApp[appKey]) patchesByApp[appKey] = {}
       for (const configKey in diffs.updated[appKey]) {
         patchesByApp[appKey][configKey] = diffs.updated[appKey][configKey]
+      }
+    }
+  }
+
+  if (diffs.deleted) {
+    for (const appKey in diffs.deleted) {
+      if (!patchesByApp[appKey]) patchesByApp[appKey] = {}
+      for (const configKey in diffs.deleted[appKey]) {
+        patchesByApp[appKey][configKey] = null;
       }
     }
   }
@@ -133,12 +153,39 @@ async function apply(diffs: Diff, client: APIClient): Promise<void> {
   }
 }
 
+export async function fetchConfig(app: string, client: APIClient): Promise<{app: string, config: Heroku.ConfigVars}> {
+  try {
+    const resp = await client.get(`/apps/${app}/config-vars`);
+    // resp.body typecheck is needed it seems due to changes between node versions
+    return Promise.resolve({app: app, config: <Heroku.ConfigVars>
+      (typeof resp.body == 'string' ? JSON.parse(<string>resp.body) : resp.body)
+    });
+  } catch(err) {
+    if ((<{statusCode: number}>err).statusCode === 404) throw new errors.AppNotFoundError(app);
+    throw err;
+  }
+}
+
+export async function fetchConfigs(apps: string[], client: APIClient): Promise<Record<string, Heroku.ConfigVars>> {
+  const promises: Promise<{app: string, config: Heroku.ConfigVars}>[] = []
+  const appConfigs: Record<string, Heroku.ConfigVars> = {}
+
+  apps.map(app => promises.push(fetchConfig(app, client)));
+
+  await Promise.all(promises)
+  .then(values => {
+    values.map((config => {appConfigs[config.app] = config.config}));
+  })
+  return Promise.resolve(appConfigs);
+}
+
 export default class Apply extends Command {
   static description = 'Applies the configuration to the defined applications.'
   static flags = {
     path: flags.string({char: 'f', description: 'Path to the config file.', required: true}),
     app: flags.string({char: 'a', description: 'Single app to apply changes to.', required: false}),
-    dryrun: flags.boolean({char: 'd', description: 'Dry run, don\'t apply changes', required: false})
+    dryrun: flags.boolean({char: 'd', description: 'Dry run, don\'t apply changes', required: false}),
+    nodelete: flags.boolean({description: 'Do not delete config keys', required: false})
   }
 
   async run(): Promise<void> {
@@ -158,8 +205,23 @@ export default class Apply extends Command {
     });
 
     const diffs = <Diff>detailedDiff(currentConfig, expectedConfig);
+    // remove deletions from diffs that have been marked as remote config
+    if (!flags.nodelete) {
+      for (const app of apps.filter((app) => app in diffs.deleted)) {
+        for (const key in diffs.deleted[app]) {
+          if (loadedConfig.apps[app].remote_config.indexOf(key) > -1) {
+            delete diffs.deleted[app][key]
+          }
+        }
+        if (Object.keys(diffs.deleted[app]).length === 0) delete diffs.deleted[app]
+      }
+    } else {
+      for (const app of apps.filter((app) => app in diffs.deleted)) {
+        delete diffs.deleted[app];
+      }
+    }
     const numUpdates = Object.keys(diffs.updated).map((key): number => Object.keys(diffs.updated[key]).length).reduce((prev, cur) => prev + cur, 0)
-    if (numUpdates === 0 && Object.keys(diffs.added).length === 0) {
+    if (numUpdates === 0 && Object.keys(diffs.added).length === 0 && Object.keys(diffs.deleted).length === 0) {
       ux.log('No diffs found, exiting.')
       return Promise.resolve();
     }

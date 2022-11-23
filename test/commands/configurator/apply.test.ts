@@ -3,10 +3,14 @@ import * as testutils from '../../utils'
 import {CliUx} from '@oclif/core'
 import * as config from '../../../src/lib/config'
 import {color} from '@heroku-cli/color'
+import * as sinon from 'sinon'
 
 describe('configurator:apply', () => {
   const invalidConfigFile = testutils.writeConfig('some invalid data')
   const simpleConfigFile = testutils.writeConfig(testutils.SIMPLE_CONFIG)
+  let sinonStub: any | null = null;
+
+  beforeEach(() => sinonStub = null)
 
   test
   .command(['configurator:apply', '-f', 'non_existing_file.yml'])
@@ -35,7 +39,21 @@ describe('configurator:apply', () => {
 
   test
   .stdout()
-  .stub(config, 'load', () => testutils.mockLoad({name: 'test_app', apps: {test: {config: {FOO: 'foo'}}}}))
+  .stub(CliUx.ux, 'confirm', () => async () => true)
+  .stub(CliUx.ux, 'prompt', () => async () => 'wrong')
+  .nock('https://api.heroku.com', api => {
+    api
+    .get(/apps\/.*\/config-vars/).reply(200, {FOO: 'foo'})
+  })
+  .command(['configurator:apply', '-f', simpleConfigFile.name])
+  .it('should let the user know when skipped due to input mismatch', ({stdout}) => {
+    // TODO: more meaningful test. maybe regex parsing the table or even add json output support?
+    expect(stdout).to.contain('Max attempts exceeded, skipping app_a')
+  })
+
+  test
+  .stdout()
+  .stub(config, 'load', () => testutils.mockLoad({name: 'test_app', apps: {test: {config: {FOO: 'foo'}, remote_config: ['REMOTE']}}}))
   .nock('https://api.heroku.com', api => {
     api.get(/apps\/.*\/config-vars/).reply(200, {FOO: 'foo', REMOTE: 'bar'})
   })
@@ -46,9 +64,9 @@ describe('configurator:apply', () => {
 
   test
   .stdout()
-  .stub(config, 'load', () => testutils.mockLoad({name: 'test_app', apps: {test: {}}}))
+  .stub(config, 'load', () => testutils.mockLoad({name: 'test_app', apps: {test: {config: {}, remote_config: []}}}))
   .nock('https://api.heroku.com', api => {
-    api.get(/apps\/.*\/config-vars/).reply(200, {FOO: 'foo'})
+    api.get(/apps\/.*\/config-vars/).reply(200, {})
   })
   .command(['configurator:apply', '-f', 'doesnt_matter.yml'])
   .it('should report no diffs when loaded config is empty', ctx => {
@@ -60,8 +78,8 @@ describe('configurator:apply', () => {
   .stub(config, 'load', () => testutils.mockLoad({
       name: 'test_config',
       apps: {
-        test_a: {config: {FOO: 'foo'}},
-        test_b: {config: {FOO: 'bar'}},
+        test_a: {config: {FOO: 'foo'}, remote_config: []},
+        test_b: {config: {FOO: 'bar'}, remote_config: []},
       },
     })
   )
@@ -75,7 +93,7 @@ describe('configurator:apply', () => {
 
   test
   .stdout()
-  .stub(config, 'load', () => testutils.mockLoad({name: 'test_notfound', apps: {not_found: {config: {FOO: 'bar'}}}}))
+  .stub(config, 'load', () => testutils.mockLoad({name: 'test_notfound', apps: {not_found: {config: {FOO: 'bar'}, remote_config: []}}}))
   .nock('https://api.heroku.com', api => {
     api.get(/apps\/.*\/config-vars/).reply(404)
   })
@@ -86,7 +104,7 @@ describe('configurator:apply', () => {
   test
   .stdout()
   .stderr()
-  .stub(config, 'load', () => testutils.mockLoad({name: 'test', apps: {test: {config: {FOO: 'bar'}}}}))
+  .stub(config, 'load', () => testutils.mockLoad({name: 'test', apps: {test: {config: {FOO: 'bar'}, remote_config: []}}}))
   .command(['configurator:apply', '-f', 'doesnt_matter.yml', '-a', 'not_found'])
   .catch(err => expect(err.message).to.contain(`App ${color.app('not_found')} is not in configured apps`))
   .it('should let the user know when the targeted app doesnt exist')
@@ -132,5 +150,77 @@ describe('configurator:apply', () => {
   .it('should let the user know when they dont have access', ({stderr}) => {
     // not sure this needs to be different than other errors
     expect(stderr).to.contain('Unable to apply config')
+  })
+
+  test
+  .stdout()
+  .stderr()
+  .stub(CliUx.ux, 'confirm', () => async () => true)
+  .stub(CliUx.ux, 'prompt', () => async () => 'test')
+  .stub(config, 'load', () => testutils.mockLoad({name: 'test', apps: {test: {config: {FOO: 'foo'}, remote_config: ['REMOTE']}}}))
+  .nock('https://api.heroku.com', api => {
+    api
+    .get('/apps/test/config-vars').reply(200, {
+      FOO: 'foo',
+      REMOTE: 'remote',
+      DELETE: 'bar'
+    })
+    .patch('/apps/test/config-vars', {DELETE: null}).reply(200)
+  })
+  .command(['configurator:apply', '-f', 'doesnt_matter.yml'])
+  .it('should delete the key not marked remote', ({stdout}) => {
+    expect(stdout).to.contain('DELETE')
+  })
+
+  test
+  .stdout()
+  .stderr()
+  .stub(CliUx.ux, 'confirm', () => async () => true)
+  .stub(CliUx.ux, 'prompt', () => async () => 'test')
+  .stub(config, 'load', () => testutils.mockLoad({name: 'test', apps: {test: {config: {FOO: 'foo'}, remote_config: ['REMOTE']}}}))
+  .nock('https://api.heroku.com', api => {
+    api
+    .get('/apps/test/config-vars').reply(200, {
+      FOO: 'foo',
+      REMOTE: 'remote',
+      DELETE: 'bar'
+    })
+  })
+  .command(['configurator:apply', '-f', 'doesnt_matter.yml', '--nodelete'])
+  .it('should not delete if run with nodelete', ({stdout}) => {
+    expect(stdout).to.not.contain('DELETE')
+  })
+
+  test
+  .stdout()
+  .stderr()
+  .stub(CliUx.ux, 'confirm', () => async () => true)
+  .stub(CliUx.ux, 'prompt', () => async () => {
+    // there's gotta be a better way to do this
+    if (!sinonStub) {
+      sinonStub = sinon.stub()
+      sinonStub.onCall(0).returns('test_a').onCall(1).returns('test_b')
+    }
+    const rval = sinonStub()
+    return Promise.resolve(rval)
+  })
+  .stub(config, 'load', () => testutils.mockLoad({
+    name: 'test',
+    apps: {
+      test_a: {config: {FOO: 'bar'}, remote_config: ['REMOTE']},
+      test_b: {config: {FOO: 'bar'}, remote_config: ['REMOTE']},
+    }
+  }))
+  .nock('https://api.heroku.com', api => {
+    api
+    .get('/apps/test_a/config-vars').reply(200, {FOO: 'foo'})
+    .get('/apps/test_b/config-vars').reply(200, {FOO: 'foo'})
+    .patch('/apps/test_a/config-vars').reply(200)
+    .patch('/apps/test_b/config-vars').reply(403)
+  })
+  .command(['configurator:apply', '-f', 'doesnt_matter.yml'])
+  .it('should warn the user when an error occurs but complete the rest', ({stdout, stderr}) => {
+    expect(stdout).to.contain('Applying config for test_a\nConfig successfully applied') &&
+    expect(stderr).to.contain(`Unable to apply config`)
   })
 })

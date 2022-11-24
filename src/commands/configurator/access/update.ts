@@ -120,7 +120,6 @@ async function apply(apps: string[], adds: Record<string, PermissionChange[]>, u
           ux.warn(`Skipping ${app}`)
           break;
         }
-        default: throw err;
       }
     })
   }

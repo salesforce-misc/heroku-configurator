@@ -25,7 +25,29 @@ describe('configurator:access:update', () => {
     .patch(/teams\/apps\/.*\/collaborators/).reply(200)
   })
   .command(['configurator:access:update', '-p', 'view,operate', '-f', 'doesnt_matter.yml', 'a@example.com,b@example.com'])
-  .it('should apply updates successfully', ({stdout}) => {
+  .it('should apply updates (add) successfully', ({stdout}) => {
+    expect(stdout).to.contain('Permissions updates applied successfully')
+  })
+
+  test
+  .stdout()
+  .stub(config, 'load', () => testutils.mockLoad({name: 'test', apps: {app_a: {}}}))
+  .stub(ux, 'confirm', () => async () => 'y')
+  .stub(ux, 'prompt', () => async () => 'app_a')
+  .nock('https://api.heroku.com', api => {
+    api
+    .get(/teams\/apps\/.*\/collaborators/)
+    .reply(200, [
+      {
+        app: {name: 'app_a'},
+        permissions: [{name: 'view'}, {name: 'operate'}],
+        user: {email: 'a@example.com'}
+      }
+    ])
+    .patch(/teams\/apps\/.*\/collaborators/).reply(200)
+  })
+  .command(['configurator:access:update', '-p', 'view', '-f', 'doesnt_matter.yml', 'a@example.com'])
+  .it('should apply updates (removal) successfully', ({stdout}) => {
     expect(stdout).to.contain('Permissions updates applied successfully')
   })
 

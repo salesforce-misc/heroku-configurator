@@ -98,7 +98,9 @@ describe('configurator:apply', () => {
     api.get(/apps\/.*\/config-vars/).reply(404)
   })
   .command(['configurator:apply', '-f', 'doesnt_matter.yml'])
-  .catch(error => expect(error.message).to.contain(`App ${color.app('not_found')} doesn't exist`))
+  .catch(error => {
+    expect(error.message).to.contain('HTTP Error 404')
+  })
   .it('should error out when configured project doesn\'t exist in heroku')
 
   test
@@ -133,7 +135,7 @@ describe('configurator:apply', () => {
     api.get(/apps\/.*\/config-vars/).reply(500, {FOO: 'foo'})
   })
   .command(['configurator:apply', '-f', simpleConfigFile.name])
-  .catch(error => expect(error.message).to.contain(`Unknown error encountered when fetching config. Exiting.`))
+  .catch(error => expect(error.message).to.contain('HTTP Error 500'))
   .it('should exit early if config read fails unexpectedly')
 
   test

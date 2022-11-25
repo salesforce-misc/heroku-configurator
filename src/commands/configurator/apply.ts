@@ -5,8 +5,8 @@ import {detailedDiff} from 'deep-object-diff'
 import {RootConfigType} from '../../lib/config'
 import {table} from 'table'
 import {color} from '@heroku-cli/color'
-import * as errors from '../../lib/errors'
-import { loadConfig, retry } from '../../lib/cli'
+import {loadConfig, retry} from '../../lib/cli'
+import {HTTP} from 'http-call'
 
 const ux = CliUx.ux;
 
@@ -153,28 +153,27 @@ async function apply(diffs: Diff, client: APIClient): Promise<void> {
   }
 }
 
-export async function fetchConfig(app: string, client: APIClient): Promise<{app: string, config: Heroku.ConfigVars}> {
-  try {
-    const resp = await client.get(`/apps/${app}/config-vars`);
-    // resp.body typecheck is needed it seems due to changes between node versions
-    return Promise.resolve({app: app, config: <Heroku.ConfigVars>
-      (typeof resp.body == 'string' ? JSON.parse(<string>resp.body) : resp.body)
-    });
-  } catch(err) {
-    if ((<{statusCode: number}>err).statusCode === 404) throw new errors.AppNotFoundError(app);
-    throw err;
-  }
+type AppResponse = {
+  app: string,
+  resp: HTTP<unknown>
 }
 
 export async function fetchConfigs(apps: string[], client: APIClient): Promise<Record<string, Heroku.ConfigVars>> {
-  const promises: Promise<{app: string, config: Heroku.ConfigVars}>[] = []
   const appConfigs: Record<string, Heroku.ConfigVars> = {}
 
-  apps.map(app => promises.push(fetchConfig(app, client)));
+  const promises = apps.map(app => {
+    return new Promise<AppResponse>((resolve, reject) => {
+      client.get(`/apps/${app}/config-vars`)
+      .then((resp) => resolve({app: app, resp: resp}))
+      .catch((err) => reject(err))
+    })
+  });
 
   await Promise.all(promises)
-  .then(values => {
-    values.map((config => {appConfigs[config.app] = config.config}));
+  .then(responses => {
+    responses.map((appResp) => {
+      appConfigs[appResp.app] = typeof appResp.resp.body == 'string' ? JSON.parse(<string>appResp.resp.body) : appResp.resp.body;
+    })
   })
   return Promise.resolve(appConfigs);
 }
@@ -199,10 +198,7 @@ export default class Apply extends Command {
     }
 
     const expectedConfig = normalizeExpectedConfig(apps, loadedConfig);
-    const currentConfig = <Record<string, Heroku.ConfigVars>>await fetchConfigs(apps, this.heroku).catch((err) => {
-      if (err instanceof errors.AppNotFoundError) ux.error(`App ${color.app(err.app)} doesn't exist on Heroku`);
-      ux.error(`Unknown error encountered when fetching config. Exiting.`)
-    });
+    const currentConfig = <Record<string, Heroku.ConfigVars>>await fetchConfigs(apps, this.heroku).catch((err) => ux.error(err));
 
     const diffs = <Diff>detailedDiff(currentConfig, expectedConfig);
     // remove deletions from diffs that have been marked as remote config

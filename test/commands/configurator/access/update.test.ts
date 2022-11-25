@@ -129,4 +129,55 @@ describe('configurator:access:update', () => {
   .it('should relay properly formatted errors back to the user', ({stderr}) => {
     expect(stderr).to.contain('HTTP Error 422')
   })
+
+  test
+  .stderr()
+  .stub(config, 'load', () => testutils.mockLoad({name: 'test', apps: {app_a: {}}}))
+  .command(['configurator:access:update', '-p', 'view,operate', '-f', 'doesnt_matter.yml', 'a@example.com', '-a', 'wrong_app'])
+  .catch((err) => expect(err.message).to.contain('not in configured apps'))
+  .it('should error out when an invalid app is specified')
+
+  test
+  .stderr()
+  .stub(config, 'load', () => testutils.mockLoad({name: 'test', apps: {app_a: {}, app_b: {}}}))
+  .stub(ux, 'confirm', () => async () => 'y')
+  .stub(ux, 'prompt', () => async () => 'app_a')
+  .nock('https://api.heroku.com', api => {
+    api
+    .get('/teams/apps/app_a/collaborators')
+    .reply(200, [{app: {name: 'app_a'}, permissions: [{name: 'view'}], user: {email: 'a@example.com'}}])
+    .patch('/teams/apps/app_a/collaborators/a@example.com').reply(422)
+  })
+  .command(['configurator:access:update', '-p', 'view,operate', '-f', 'doesnt_matter.yml', 'a@example.com', '-a', 'app_a'])
+  .it('should only update permissions for the specified app')
+
+  test
+  .stdout()
+  .stub(config, 'load', () => testutils.mockLoad({name: 'test', apps: {app_a: {}}}))
+  .stub(ux, 'confirm', () => async () => 'y')
+  .stub(ux, 'prompt', () => async () => 'app_a')
+  .nock('https://api.heroku.com', api => {
+    api
+    .get('/teams/apps/app_a/collaborators')
+    .reply(200, [{app: {name: 'app_a'}, permissions: [{name: 'view'}], user: {email: 'a@example.com'}}])
+  })
+  .command(['configurator:access:update', '-p', 'view', '-f', 'doesnt_matter.yml', 'a@example.com'])
+  .it('should let the user know if there are no updates to be made', ({stdout}) => {
+    expect(stdout).to.contain('No changes detected, exiting.')
+  })
+
+  test
+  .stdout()
+  .stderr()
+  .stub(config, 'load', () => testutils.mockLoad({name: 'test', apps: {app_a: {}}}))
+  .stub(ux, 'confirm', () => async () => 'y')
+  .stub(ux, 'prompt', () => async () => 'app_a')
+  .nock('https://api.heroku.com', api => {
+    api
+    .get('/teams/apps/app_a/collaborators')
+    .reply(403)
+  })
+  .command(['configurator:access:update', '-p', 'view', '-f', 'doesnt_matter.yml', 'a@example.com'])
+  .catch((err) => expect(err.message).to.contain('HTTP Error 403'))
+  .it('should let the user know if they do not have access to view app permissions')
 })

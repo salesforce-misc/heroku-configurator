@@ -5,7 +5,7 @@ import {z} from 'zod'
 import { ux } from "@oclif/core/lib/cli-ux"
 import { color } from '@heroku-cli/color'
 import {table} from 'table'
-import {HTTPError} from 'http-call'
+import {HTTPError, HTTP} from 'http-call'
 import { HerokuAPIError } from "@heroku-cli/command/lib/api-client"
 
 const CollaboratorsResponseSchema = z.array(
@@ -18,21 +18,32 @@ const CollaboratorsResponseSchema = z.array(
 type CollaboratorsByApp = Record<string, Record<string, string[]>>
 type CollaboratorsResponseType = z.infer<typeof CollaboratorsResponseSchema>
 
+type AppResponse = {
+  app: string,
+  resp: HTTP<unknown>
+}
+
 async function getCollaborators(apps: string[], client: APIClient): Promise<CollaboratorsByApp> {
   const collaboratorsByApp: CollaboratorsByApp = {};
   apps.map((app) => collaboratorsByApp[app] = {})
 
-  const promises = apps.map((app) => client.get(`/teams/apps/${app}/collaborators`));
+  const promises = apps.map((app) => {
+    return new Promise<AppResponse>((resolve, reject) => {
+      client.get(`/teams/apps/${app}/collaborators`)
+      .then((resp) => resolve({app: app, resp: resp}))
+      .catch((err) => reject(err))
+    })
+  });
   await Promise.all(promises)
   .then((responses) => {
-    responses.map((resp) => {
+    responses.map((appResp) => {
       // resp.body typecheck is needed it seems due to changes between node versions
       const collaborators = <CollaboratorsResponseType>CollaboratorsResponseSchema.parse(
-        (typeof resp.body == 'string' ? JSON.parse(<string>resp.body) : resp.body)
+        (typeof appResp.resp.body == 'string' ? JSON.parse(<string>appResp.resp.body) : appResp.resp.body)
       );
       for (const collaborator of collaborators) {
-        collaboratorsByApp[collaborator.app.name][collaborator.user.email] = collaborator.permissions.map((permObj => permObj.name));
-        collaboratorsByApp[collaborator.app.name][collaborator.user.email].sort();
+        collaboratorsByApp[appResp.app][collaborator.user.email] = collaborator.permissions.map((permObj => permObj.name));
+        collaboratorsByApp[appResp.app][collaborator.user.email].sort();
       }
     })
   })
@@ -114,7 +125,7 @@ async function apply(apps: string[], adds: Record<string, PermissionChange[]>, u
       switch(err.constructor) {
         case errors.RetryError: ux.log(`Max attempts exceeded, skipping ${app}`); break;
         case HTTPError:
-          // fall through
+          // fall through. it'll be HTTPError in tests but HerokuAPI when invoked through the CLI
         case HerokuAPIError: {
           ux.warn(`${err.message}`);
           ux.warn(`Skipping ${app}`)
@@ -157,17 +168,7 @@ export default class UpdateAccess extends Command {
       apps = [flags.app];
     }
     let currentCollaboratorsByApp: CollaboratorsByApp = {}
-    try { currentCollaboratorsByApp = await getCollaborators(apps, this.heroku) }
-    catch(err) {
-      const typedError = <Error>err;
-      if (typedError.constructor) {
-        switch (typedError.constructor) {
-          case errors.PermissionDeniedError: ux.error(`You do not have access to modify permissions on ${(<errors.PermissionDeniedError>typedError).app}`); break;
-          case errors.TeamsAppRequiredError: ux.error(`App ${color.app((<errors.TeamsAppRequiredError>err).app)} must be a teams app`); break;
-        }
-      }
-      throw err;
-    }
+    currentCollaboratorsByApp = await getCollaborators(apps, this.heroku)
 
     const [adds, updates] = getPermissionsToChange(apps, collaboratorsToUpdate, currentCollaboratorsByApp, expectedPerms)
     if (Object.keys(adds).length == 0 && Object.keys(updates).length == 0) {
@@ -176,12 +177,9 @@ export default class UpdateAccess extends Command {
     }
 
     if (await shouldApplyChanges(Object.keys(loadedConfig.apps), adds, updates)) {
-      try {
-        await apply(apps, adds, updates, this.heroku)
-        ux.log('Permissions updates applied successfully')
-      } catch(err) {
-        ux.error(<Error>err)
-      }
+      // this will result in a 404 if it's not a teams app
+      await apply(apps, adds, updates, this.heroku)
+      ux.log('Permissions updates applied successfully')
     }
   }
 }

@@ -1,18 +1,3 @@
-interface IAppError {app: string}
-
-export class AppError extends Error implements IAppError {
-  app: string
-
-  constructor(app: string) {
-    super();
-    this.app = app;
-  }
-}
-
-export class AppNotFoundError extends AppError {}
-export class TeamsAppRequiredError extends AppError {}
-export class PermissionDeniedError extends AppError {}
-
 interface IFileError {path: string}
 
 export class FileError extends Error implements IFileError {

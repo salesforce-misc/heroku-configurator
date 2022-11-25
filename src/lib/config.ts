@@ -95,8 +95,7 @@ export async function load(filePath: string, expectedSchema: z.ZodType = RootCon
   catch (err) {throw new errors.FileDoesNotExistError(filePath)}
 
   let configObj: RootConfigType | ExternalConfigType;
-  try {configObj = parse(data)}
-  catch (err) { throw new errors.InvalidConfigurationError(filePath); }
+  configObj = parse(data)
 
   try {configObj = expectedSchema.parse(configObj)}
   catch (err) { throw new errors.InvalidConfigurationError(filePath); }
@@ -105,8 +104,7 @@ export async function load(filePath: string, expectedSchema: z.ZodType = RootCon
 
   if (expectedSchema === RootConfigSchema) {
     // order is important. locals should take higher priority than externally loaded config.
-    try { applyLocals(<RootConfigType>configObj) }
-    catch(err) { return Promise.reject(err) }
+    applyLocals(<RootConfigType>configObj)
     await applyExternalIncludes(<RootConfigType>configObj, configDir);
   }
   return Promise.resolve(configObj);

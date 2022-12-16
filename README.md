@@ -118,6 +118,8 @@ apps:
       - <string>
     config:
       <string>: <string|number|boolean>
+    remote_config:
+      - <string>
 ```
 
 * `name`: (required) Human-friendly name for the file. Could be a single app name or a description of the environment (i.e. dev, staging or prod)
@@ -128,6 +130,7 @@ apps:
 * `apps`: (required) An object with application names as keys, containing configuration parameters. Note that the application names _must_ match Heroku app names exactly.
   * `include`: (optional) An array of either local or included shared configuration to be imported to the app config. To import local config, simply use the key. Included external config uses the format <config_name>.<config_block>.
   * `config`: (optional) An object containing k/v pairs defining application-specific configuration
+  * `remote_config`: (optional) A list of strings representing config variables that defined remotely and that configurator should not be concerned with. These may be sensitive variables that should not be in source control, or other environment variables defined by other processes, such as addons.
 
 Order of precedence for configuration application: Application-specific config > Locals > Imported
 
@@ -136,11 +139,16 @@ Order of precedence for configuration application: Application-specific config >
 ```
 name: <string>
 <string>:
-  configThis test seems to be a flapper: I haven't reproduced locally.:
+  config:
     <string>: <string|number|boolean>
+  remote_config:
+    - <string>
 ```
 
 * `name`: (required) Name to be used in root application configs when importing config blocks
 * `<string>`: (required) An arbitrary string identifier for the config block to be used when importing. 
   * `config`: (required) Contains k/v pairs defining the configuration blocks.
+  * `remote_config`: (optional) A list of strings representing config variables that defined remotely and that configurator should not be concerned with. These may be sensitive variables that should not be in source control, or other environment variables defined by other processes, such as addons.
+
+Order of precedence for configuration application: Application-specific config > Locals > Imported
 See [dev-example.yml](example/dev-example.yml) for a concrete example.

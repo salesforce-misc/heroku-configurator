@@ -79,16 +79,14 @@ function outputDiffs(diffs: DiffByApp): void {
     if (app.added.length > 0) {
       console.log('Added:')
       console.log(table(
-        [['Variable', 'Value'], ...app.added],
-        {columnDefault: {width: 50}},
+        [['Variable', 'Value'], ...app.added]
       ))
     }
 
     if (app.updated.length > 0) {
       console.log('Updated:')
       console.log(table(
-        [['Variable', 'New value', 'Current value'], ...app.updated],
-        {columnDefault: {width: 50}},
+        [['Variable', 'New value', 'Current value'], ...app.updated] 
       ))
     }
 

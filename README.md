@@ -1,3 +1,5 @@
+_NOTE_: This project was created during hack days, and is not used internally. The level of support will likely be light at best.
+
 # heroku-configurator
 
 * [Installation](#installation)
